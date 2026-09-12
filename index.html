@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ComfyUI Workflows Directory</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <header>
+    <div class="header-title">
+      <span>⚡ ComfyUI Workflows Directory</span>
+    </div>
+    <p class="subtitle">Comprehensive index, applications matrix, and model guide for 420+ ComfyUI workflows.</p>
+  </header>
+
+  <section class="controls">
+    <div class="search-box">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="searchInput" placeholder="Search by name, category, model, description, or applications...">
+    </div>
+
+    <div class="filters" id="categoryFilters">
+      <button class="filter-btn active" data-category="ALL">All Categories</button>
+    </div>
+
+    <div class="stats-counter" id="statsCounter">
+      Loading workflows...
+    </div>
+  </section>
+
+  <main class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 60px; text-align: center;">#</th>
+          <th style="width: 320px;">Workflow & Info</th>
+          <th>Description & Primary Applications</th>
+        </tr>
+      </thead>
+      <tbody id="workflowTableBody">
+        <tr>
+          <td colspan="3" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+            Loading workflow details...
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
