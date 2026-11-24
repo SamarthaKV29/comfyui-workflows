@@ -1,0 +1,161 @@
+{
+  "name": "fluid_motion",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "fluid-motion",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "fm-webhook",
+      "name": "Webhook_Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.0,
+      "position": [
+        100,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg-runpod-key",
+              "name": "runpod_api_key",
+              "value": "RUNPOD_API_KEY_PLACEHOLDER",
+              "type": "string"
+            },
+            {
+              "id": "cfg-video-url",
+              "name": "runpod_video_endpoint_url",
+              "value": "https://api.runpod.ai/v2/dwtma7j6xegnfz/runsync",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fm-config",
+      "name": "User_Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        320,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $('Webhook_Trigger').first().json.body || $('Webhook_Trigger').first().json;\nconst cfg = $('User_Config').first().json;\n\nif (!raw.prompt || !raw.reference_image) {\n  throw new Error('Validation Error: prompt and reference_image are strictly required fields.');\n}\n\nconst payload = {\n  prompt: raw.prompt,\n  reference_image: raw.reference_image,\n  duration: parseFloat(raw.duration) || 5.0,\n  orientation: raw.orientation || '16:9',\n  resolution: raw.resolution || '720p',\n  tier: raw.tier || 'standard',\n  reference_video: raw.reference_video || null,\n  audio_track: raw.audio_track || null,\n  seed: raw.seed ? parseInt(raw.seed, 10) : null,\n  fps: raw.fps ? parseInt(raw.fps, 10) : 24\n};\n\nreturn [{\n  json: {\n    runpod_payload: { input: payload },\n    runpod_api_key: cfg.runpod_api_key,\n    runpod_video_endpoint_url: cfg.runpod_video_endpoint_url\n  }\n}];"
+      },
+      "id": "fm-validator",
+      "name": "Validate_And_Format_Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2.0,
+      "position": [
+        540,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.runpod_video_endpoint_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ \"Bearer \" + $json.runpod_api_key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.runpod_payload) }}",
+        "options": {}
+      },
+      "id": "fm-dispatch-runpod",
+      "name": "Call_RunPod_Video_Worker",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        760,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "fm-respond",
+      "name": "Respond_To_Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        980,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook_Trigger": {
+      "main": [
+        [
+          {
+            "node": "User_Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "User_Config": {
+      "main": [
+        [
+          {
+            "node": "Validate_And_Format_Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate_And_Format_Payload": {
+      "main": [
+        [
+          {
+            "node": "Call_RunPod_Video_Worker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call_RunPod_Video_Worker": {
+      "main": [
+        [
+          {
+            "node": "Respond_To_Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  }
+}

@@ -1,0 +1,865 @@
+{
+  "name": "fk_video_gen_bot_flow",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message",
+          "callback_query"
+        ],
+        "additionalFields": {}
+      },
+      "id": "20916c6e-343e-41ec-9cfd-c2dc34098139",
+      "name": "Telegram_Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1008,
+        304
+      ],
+      "webhookId": "4c7239c8-ff1c-4845-9847-2946b35b35bd",
+      "credentials": {
+        "telegramApi": {
+          "id": "17HGVkKpgfbP8iA7",
+          "name": "fk_video_gen_bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg-bot-name",
+              "name": "bot_name",
+              "value": "fk_video_gen_bot",
+              "type": "string"
+            },
+            {
+              "id": "cfg-bot-token",
+              "name": "telegram_bot_token",
+              "value": "YOUR_TELEGRAM_BOT_TOKEN",
+              "type": "string"
+            },
+            {
+              "id": "cfg-model",
+              "name": "openrouter_model",
+              "value": "google/gemini-2.5-flash",
+              "type": "string"
+            },
+            {
+              "id": "cfg-runpod-img-url",
+              "name": "runpod_image_endpoint_url",
+              "value": "https://api.runpod.ai/v2/8ezgyyjq87n2h4/runsync",
+              "type": "string"
+            },
+            {
+              "id": "cfg-runpod-vid-url",
+              "name": "runpod_video_endpoint_url",
+              "value": "https://api.runpod.ai/v2/dwtma7j6xegnfz/runsync",
+              "type": "string"
+            },
+            {
+              "id": "telegraph_token",
+              "name": "telegraph_access_token",
+              "value": "YOUR_TELEGRAPH_ACCESS_TOKEN",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "87e53512-4ab4-4c89-aebc-a7c9d5b03f9d",
+      "name": "User_Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -784,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "function escapeMarkdownV2(str) {\n  if (!str) return '';\n  return String(str).replace(/([_*[\\]()~`>#+\\-=|{}.!\\\\])/g, '\\\\$1');\n}\n\nconst raw = $('Telegram_Trigger').first().json || {};\nconst cfg = $('User_Config').first().json || {};\n\nlet staticData = {};\ntry { staticData = $getWorkflowStaticData('global'); } catch (e) { staticData = {}; }\nstaticData.sessions = staticData.sessions || {};\n\nlet chatId = '';\nlet eventType = 'ignore';\nlet payload = {};\n\nconst getSession = (cid) => staticData.sessions[cid] || {};\nconst saveSession = (cid, data) => { staticData.sessions[cid] = data; };\n\n// \u2500\u2500 Welcome Message \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst makeWelcomeMessage = () => {\n  const text = `\ud83c\udfac *Welcome to Fluid Motion Studio\\\\!*\\n\\nI turn your concepts into cinematic AI video using state\\\\-of\\\\-the\\\\-art serverless workflows\\\\.\\n\\n\ud83c\udfad *Available Character Rosters:*\\n\u2022 *Pro Series:* Sam, Singh, Brock, Alen, Dana, Boo, Miga, Sia\\n\u2022 *Diva Series:* Rani, Gemma, Miga, Dana, Boo, Sia\\n\u2022 *Neutral:* Unlimited custom/original characters \\\\& worlds\\n\\n\ud83d\udca1 *Quick Suggestions:*\\n1\\\\. Cyberpunk transformation in neon rain with Sia\\n2\\\\. Ghibli\\\\-style warm tea house morning with Alen\\n3\\\\. High\\\\-fashion Paris runway walk with Gemma\\n4\\\\. Tactical assault extraction with Sam \\\\& Singh\\n5\\\\. Ethereal underwater ancient temple discovery\\n\\n\ud83d\udc47 *Step 1: Choose your Video Universe:*`;\n  const replyMarkup = {\n    inline_keyboard: [\n      [\n        { text: '\u2728 Pro Character Universe', callback_data: 'type:pro' },\n        { text: '\ud83d\udc8e Diva Nation Glamor', callback_data: 'type:diva' }\n      ],\n      [{ text: '\ud83c\udfa8 Neutral / Original Concept', callback_data: 'type:neutral' }],\n      [{ text: '\u274c Reset Session', callback_data: 'action:reset' }]\n    ]\n  };\n  return { text, replyMarkup };\n};\n\n// \u2500\u2500 Style Picker \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst makeStylePicker = (videoType) => {\n  const universe = videoType.toUpperCase();\n  const text = `\u2705 *Universe selected:* ${escapeMarkdownV2(universe)}\\n\\n\ud83c\udfa8 *Step 2: Choose your Visual Style:*\\n\\nThis defines the rendering mood \\\\\u2014 anime, cinematic, dark, etc\\\\.`;\n  const replyMarkup = {\n    inline_keyboard: [\n      [\n        { text: '\ud83c\udf38 Anime SDXL', callback_data: 'style:anime' },\n        { text: '\u26a1 Cyberpunk Neon', callback_data: 'style:cyberpunk' }\n      ],\n      [\n        { text: '\ud83c\udfac Cinematic 35mm', callback_data: 'style:cinematic' },\n        { text: '\ud83d\udd76\ufe0f Noir Film', callback_data: 'style:noir' }\n      ],\n      [\n        { text: '\ud83c\udf3f Ghibli Watercolor', callback_data: 'style:ghibli' },\n        { text: '\ud83d\udcf7 Photorealistic', callback_data: 'style:photorealistic' }\n      ],\n      [{ text: '\u274c Reset', callback_data: 'action:reset' }]\n    ]\n  };\n  return { text, replyMarkup };\n};\n\n// \u2500\u2500 Resume Prompt \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst getStageLabel = (s) => ({\n  awaiting_idea: 'Awaiting Scene Idea',\n  storyboard_review: 'Storyboard Review',\n  image_approved: 'Reference Image Rendered',\n  generating_video: 'Video Render Pipeline'\n}[s] || 'Draft in Progress');\n\nconst makeResumePrompt = (session) => {\n  const universe = escapeMarkdownV2((session.video_type || 'neutral').toUpperCase());\n  const style = escapeMarkdownV2(session.style || 'not set');\n  const stage = escapeMarkdownV2(getStageLabel(session.stage));\n  const idea = escapeMarkdownV2((session.idea || 'Custom Concept').substring(0, 80));\n  const text = `\ud83d\udd04 *Active Production Found\\\\!*\\n\\n\u2022 *Universe:* ${universe}\\n\u2022 *Style:* ${style}\\n\u2022 *Stage:* ${stage}\\n\u2022 *Concept:* _\"${idea}\"_\\n\\n\ud83d\udc47 *Resume or start fresh?*`;\n  const replyMarkup = {\n    inline_keyboard: [[\n      { text: '\u25b6\ufe0f Resume Production', callback_data: 'action:resume' },\n      { text: '\u2728 Start Fresh', callback_data: 'action:reset' }\n    ]]\n  };\n  return { text, replyMarkup };\n};\n\n// \u2500\u2500 Idea Prompt \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst makeIdeaPrompt = (videoType, style) => {\n  const universe = escapeMarkdownV2(videoType.toUpperCase());\n  const styleName = escapeMarkdownV2(style || '');\n  return {\n    text: `\u2705 *Universe:* ${universe} \\\\| *Style:* ${styleName}\\n\\n\u270d\ufe0f *Step 3: Send me your Story / Scene Concept*\\n\\nDescribe the action, characters, and mood\\\\. The AI will world\\\\-build and storyboard it automatically\\\\.\\n\\n*Example:*\\n_\"Sia leaps between neon\\\\-lit skyscrapers chasing a rogue drone\\\\. Rain\\\\. 3am\\\\.\"_`\n  };\n};\n\n// \u2500\u2500 MAIN DISPATCH \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nif (raw.callback_query) {\n  chatId = String(raw.callback_query.message?.chat?.id || raw.callback_query.from?.id || '');\n  const data = raw.callback_query.data || '';\n  let session = getSession(chatId);\n\n  if (data === 'action:reset') {\n    saveSession(chatId, {});\n    eventType = 'send_welcome';\n    const w = makeWelcomeMessage();\n    payload = { text: w.text, reply_markup: w.replyMarkup };\n\n  } else if (data === 'action:resume') {\n    if (session.stage === 'storyboard_review' && session.storyboard) {\n      eventType = 'show_storyboard_cached';\n      payload = { session, storyboard: session.storyboard };\n    } else if (session.stage === 'image_approved' && session.reference_image_base64) {\n      eventType = 'show_image_cached';\n      payload = { session };\n    } else if (session.stage === 'awaiting_idea') {\n      eventType = 'send_message';\n      payload = makeIdeaPrompt(session.video_type, session.style);\n    } else {\n      eventType = 'send_welcome';\n      const w = makeWelcomeMessage();\n      payload = { text: w.text, reply_markup: w.replyMarkup };\n    }\n\n  } else if (data.startsWith('type:')) {\n    session.video_type = data.replace('type:', '');\n    session.stage = 'selecting_style';\n    saveSession(chatId, session);\n    eventType = 'send_message';\n    const sp = makeStylePicker(session.video_type);\n    payload = { text: sp.text, reply_markup: sp.replyMarkup };\n\n  } else if (data.startsWith('style:')) {\n    session.style = data.replace('style:', '');\n    session.stage = 'awaiting_idea';\n    saveSession(chatId, session);\n    eventType = 'send_message';\n    payload = makeIdeaPrompt(session.video_type, session.style);\n\n  } else if (data === 'action:approve_storyboard') {\n    session.stage = 'generating_image';\n    saveSession(chatId, session);\n    eventType = 'gen_image_draft';\n    payload = { session };\n\n  } else if (data === 'action:regen_storyboard') {\n    session.isRegen = true;\n    saveSession(chatId, session);\n    eventType = 'gen_world_and_storyboard';\n    payload = { session, isRegen: true };\n\n  } else if (data === 'action:confirm_image') {\n    session.stage = 'generating_video';\n    saveSession(chatId, session);\n    eventType = 'gen_video';\n    payload = { session };\n\n  } else if (data === 'action:regen_image') {\n    session.isRegenImage = true;\n    saveSession(chatId, session);\n    eventType = 'gen_image_draft';\n    payload = { session, isRegenImage: true };\n  }\n\n} else if (raw.message && raw.message.text) {\n  chatId = String(raw.message.chat?.id || raw.message.from?.id || '');\n  const text = (raw.message.text || '').trim();\n  const lower = text.toLowerCase();\n  let session = getSession(chatId);\n\n  const resets = ['/reset', 'reset', '/clear', 'clear'];\n  const resumes = ['/resume', 'resume'];\n  const greetings = ['hey', 'hi', 'hello', 'start', '/start', 'help', '/help', 'menu'];\n\n  if (resets.includes(lower)) {\n    saveSession(chatId, {});\n    eventType = 'send_welcome';\n    const w = makeWelcomeMessage();\n    payload = { text: w.text, reply_markup: w.replyMarkup };\n\n  } else if (resumes.includes(lower)) {\n    if (session.stage && session.stage !== 'completed') {\n      const r = makeResumePrompt(session);\n      eventType = 'send_welcome';\n      payload = { text: r.text, reply_markup: r.replyMarkup };\n    } else {\n      eventType = 'send_welcome';\n      const w = makeWelcomeMessage();\n      payload = { text: w.text, reply_markup: w.replyMarkup };\n    }\n\n  } else if (greetings.includes(lower)) {\n    if (session.stage && (session.storyboard || session.idea)) {\n      const r = makeResumePrompt(session);\n      eventType = 'send_welcome';\n      payload = { text: r.text, reply_markup: r.replyMarkup };\n    } else {\n      saveSession(chatId, {});\n      eventType = 'send_welcome';\n      const w = makeWelcomeMessage();\n      payload = { text: w.text, reply_markup: w.replyMarkup };\n    }\n\n  } else if (!session.video_type) {\n    eventType = 'send_welcome';\n    const w = makeWelcomeMessage();\n    payload = { text: w.text, reply_markup: w.replyMarkup };\n\n  } else if (session.stage === 'selecting_style' || !session.style) {\n    // User typed instead of clicking style \u2014 treat as style text or re-prompt\n    const styleMap = { anime: 'anime', cyberpunk: 'cyberpunk', cinematic: 'cinematic', noir: 'noir', ghibli: 'ghibli', photorealistic: 'photorealistic' };\n    const matchedStyle = styleMap[lower] || null;\n    if (matchedStyle) {\n      session.style = matchedStyle;\n      session.stage = 'awaiting_idea';\n      saveSession(chatId, session);\n      eventType = 'send_message';\n      payload = makeIdeaPrompt(session.video_type, session.style);\n    } else {\n      eventType = 'send_message';\n      const sp = makeStylePicker(session.video_type);\n      payload = { text: sp.text, reply_markup: sp.replyMarkup };\n    }\n\n  } else {\n    // Has universe + style \u2192 this is the idea\n    session.idea = text;\n    session.stage = 'generating_storyboard';\n    saveSession(chatId, session);\n    eventType = 'gen_world_and_storyboard';\n    payload = { session, idea: text };\n  }\n}\n\nreturn [{\n  json: {\n    chat_id: chatId,\n    event_type: eventType,\n    telegram_bot_token: cfg.telegram_bot_token,\n    openrouter_model: cfg.openrouter_model,\n    telegraph_access_token: cfg.telegraph_access_token,\n    runpod_image_endpoint_url: cfg.runpod_image_endpoint_url,\n    runpod_video_endpoint_url: cfg.runpod_video_endpoint_url,\n    ...payload\n  }\n}];"
+      },
+      "id": "0273a05a-8aec-4237-8916-5fe6088152b3",
+      "name": "Dispatcher_And_State",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -560,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c-welcome",
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "send_welcome",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Send_Welcome"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c-msg",
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "send_message",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Send_Message"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c-world-sb",
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "gen_world_and_storyboard",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  },
+                  {
+                    "id": "c-sb-legacy",
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "gen_storyboard",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "or"
+              },
+              "renameOutput": true,
+              "outputKey": "Gen_World_And_Storyboard"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c-imgdraft",
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "gen_image_draft",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Gen_Image_Draft"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c-genvid",
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "gen_video",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Gen_Video"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c-sb-cached",
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "show_storyboard_cached",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Show_Storyboard_Cached"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c-img-cached",
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "show_image_cached",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Show_Image_Cached"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d0a4624d-2d5b-42d7-b54c-714ec124cf5a",
+      "name": "Route_Event",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -336,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.telegram.org/bot' + $json.telegram_bot_token + '/sendMessage' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chat_id, text: $json.text, parse_mode: 'MarkdownV2', reply_markup: $json.reply_markup }) }}",
+        "options": {}
+      },
+      "id": "6e0cc3d7-9786-4ea3-bb2a-5f3bd8278938",
+      "name": "Send_Welcome_Telegram",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.telegram.org/bot' + $json.telegram_bot_token + '/sendMessage' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chat_id, text: $json.text, parse_mode: 'MarkdownV2', ...($json.reply_markup ? { reply_markup: $json.reply_markup } : {}) }) }}",
+        "options": {}
+      },
+      "id": "d7197a71-5fa0-405d-b15e-7f9a8e7489fe",
+      "name": "Send_Message_Telegram",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "let staticData = {};\ntry { staticData = $getWorkflowStaticData('global'); } catch(e) {}\nstaticData.sessions = staticData.sessions || {};\n\nconst item = $json || {};\nconst dispatcher = $('Dispatcher_And_State').first().json || {};\nconst cfg = $('User_Config').first().json || {};\n\nconst chatId = dispatcher.chat_id || item.chat_id || '';\nconst session = staticData.sessions[chatId] || dispatcher.session || item.session || {};\nconst videoType = session.video_type || dispatcher.video_type || 'neutral';\nconst style = session.style || dispatcher.style || 'cinematic';\nconst idea = session.idea || dispatcher.idea || item.idea || 'Cinematic action sequence';\nconst model = cfg.openrouter_model || dispatcher.openrouter_model || 'google/gemini-2.5-flash';\n\nconst STYLE_GUIDES = {\n  anime: 'Rendering style: Anime SDXL. Crisp cel-shading, vibrant saturated colors, clean sharp linework, dynamic action poses, expressive detailed eyes, stylized anatomy. Visual reference: modern high-budget anime theatrical film quality (e.g., Ufotable, Makoto Shinkai).',\n  cyberpunk: 'Rendering style: Cyberpunk Neon. Dark rain-soaked streets, neon reflections in puddles, volumetric fog, glowing holographic advertisements, high contrast chiaroscuro, subtle chromatic aberration, anamorphic lens flares. Visual reference: Blade Runner 2049 / Ghost in the Shell.',\n  cinematic: 'Rendering style: Cinematic 35mm Film. Anamorphic lens flares, fine organic film grain, rich Hollywood color grading (teal/orange contrast), shallow depth of field, motivated practical lighting, atmospheric haze. Visual reference: Denis Villeneuve / Roger Deakins cinematography.',\n  noir: 'Rendering style: Noir Film. High contrast black and white with selective saturated color splashes, deep shadows, venetian blind light patterns, rain-streaked glass, cigarette smoke haze, dramatic low-key lighting. Visual reference: Sin City / classic 1940s film noir.',\n  ghibli: 'Rendering style: Ghibli Watercolor. Soft painterly backgrounds, warm natural golden light, lush environmental details, gentle earthy color palettes, whimsical atmospheric depth, hand-painted aesthetic. Visual reference: Studio Ghibli masterpieces.',\n  photorealistic: 'Rendering style: Photorealistic. Ultra-high fidelity, physically accurate ray-traced lighting, subsurface scattering on skin, authentic photographic depth of field, RAW camera aesthetic, documentary realism. Visual reference: high-end RED/Arri cinematic camera captures.'\n};\n\n// --- SECRET SAUCE: Canonical Character Rosters & Strict Aesthetic Rules from docs/gems ---\nconst ROSTER_AND_AESTHETICS = {\n  diva: `## DIVA UNIVERSE CHARACTER ROSTER & CANONICAL AESTHETIC STANDARDS\n\n### MANDATORY AESTHETIC STANDARDS (WOMEN ARE THE FOCUS):\n- VIBE & BUILD: Women must be skinny, independent, sexy, beautiful, and attractive. Men must be handsome, tall, strong, hung, and ripped.\n- ATTIRE: Short skirts, short bodycon dresses, or modernized alluring traditional wear, paired with stockings or tights and high heels. (CRITICAL EXCEPTION: Sia generally DOES NOT wear stockings).\n- TOPS & CLEAVAGE: Tops must be short, daring, showing skin and full cleavage.\n- JEWELRY & ACCESSORIES: Heavy use of necklaces, bracelets, and rings is mandatory on all women.\n- MAKEUP: Full glamorous makeup with detailed eye shadows, eyeliner, and polished lip color is strictly required.\n- HAIR & POSING: Hair must ALWAYS be loose and untied. Characters must NEVER have their backs turned to the camera; at least a partial side profile or 3/4 view of the face must always be visible.\n- BACKGROUND DETAILS: Ground every scene with specific background elements: clocks, window views, luxury brand cues, and motivated lighting (e.g., golden hour glow, neon-drenched rain, 4am blue hour).\n\n### CANONICAL CHARACTER REFERENCE:\n- Sia (Female Cyborg Operative): Short sharp white hair. Sleek white and red armored cyborg bodysuit with a plunging neckline, katana strapped to back. Appearance blends organic beauty with visible sleek mechanical circuits. Generally DOES NOT wear stockings.\n- Gemma (Female Humanoid Robot): Stunning Asian-featured humanoid robot with flawless synthetic complexion, sleek dark loose hair, glowing amber eyes. Wears extra-short form-fitting futuristic clothes with metallic fabrics, translucent panels, and daring cut-outs emphasizing mechanical joints and skinny frame. High heels.\n- Rani (Female Glamour Icon): Beautiful Indian woman with deep expressive kohl-lined eyes and long wavy dark loose hair. Sexy modernized traditional attire: low-cut lehenga cholis, half-sarees draped to show midriff, or sheer salwar kameez showing skin and cleavage. Heavy statement gold jewelry: jhumkas, bangles, maang tikka.\n- Miga (Female Athletic Operative): Ripped, athletic, and beautiful. Long dark loose hair with a prominent ORANGE AND GREEN hair streak. Bold red and black tiger-stripe tattoos on arms. Attire: short low-cut tactical tops showing skin and cleavage, mini-skirts, stockings, and high heels.\n- Dana (Female Glamour): Skinny woman with long flowing brown loose hair. Stylish, sexy outfits (short dresses/skirts). (Leopard/cheetah print bodysuits only if explicitly requested). Black thigh-high heeled boots and gold necklace.\n- Boo (Female Fox Operative): Skinny operative with vibrant red loose hair, pointed fox-like ears, and a long thin cat-like spotted leopard-style tail. Sexy outfits with plunging necklines. (Leopard bodysuit only if requested). Black thigh-high heeled boots and gold necklace.\n- Brock (Male Cyborg): Tall, muscular, ripped human build, silver eyes, glowing blue neck/temple lines, blue/grey tactical gear.`,\n\n  pro: `## PRO UNIVERSE CHARACTER ROSTER & CANONICAL AESTHETIC STANDARDS\n\n### MANDATORY AESTHETIC STANDARDS:\n- VIBE & BUILD: Women must be skinny, independent, sexy, beautiful, and attractive with loose untied hair, short cleavage-showing tops, short skirts, stockings/tights, high heels, and heavy jewelry (necklaces, bracelets, rings). Never show women with backs turned (minimum 3/4 profile). Men must be handsome, tall, strong, hung, and ripped (except Alen who has an average lean student build).\n- IMMUTABLE MARKS: Physical attributes (tattoos, streaks, ears, tails, cybernetics) are permanent and cannot be omitted.\n\n### CANONICAL CHARACTER REFERENCE:\n- Sam (Male Warrior Lead): Imposing, tall, hung, muscular man with a ripped physique. Short dark hair in thick sharp spikes with a prominent ORANGE AND GREEN hair streak. Large tricolor tattoo (saffron, white, green) on left chest/shoulder with complex geometric mandala centrally over chest. Lower left arm features bold red and black tiger stripes from elbow to wrist. Combat scars on chest/arms. Heavy gold chain with square medallion, stacked wristbands.\n- Miga (Female Operative): Skinny yet ripped, athletic, and beautiful. Long dark loose hair with prominent ORANGE AND GREEN hair streak. Forehead tricolor geometric mark. Tricolor chest mandala tattoo and red/black tiger stripe forearm tattoo matching Sam. Thick gold chain with square medallion, black/red tactical wrap. Short low-cut tactical top showing skin and cleavage, short skirt, stockings, high heels.\n- Alen (Male Student Aesthetic): Young handsome Asian man, fashionable student-like aesthetic, average lean build (not massive). Tidy stylish dark hair, friendly intelligent eyes. Trendy streetwear: bomber jackets, hoodies, or layered shirts.\n- Singh (Male Veteran): Seasoned rugged veteran, weathered face, heavy tactical loadout, combat boots, assault rifle always present. Stoic and formidable.\n- Sia (Female Cyborg Operative): Short sharp white hair, sleek white/red armored bodysuit with plunging neckline, katana on back, glowing circuits. Organic beauty + visible cybernetics. No stockings.\n- Dana (Female Glamour): Skinny woman with long flowing brown loose hair. Sexy short dresses/skirts, black thigh-high heeled boots, gold necklace.\n- Boo (Female Fox Operative): Red loose hair, pointed fox ears, long thin cat-like spotted leopard tail, plunging neckline, black thigh-high heeled boots, gold necklace.\n- Brock (Male Cyborg): Male cyborg, silver eyes, glowing blue neck/temple lines, tactical gear.`,\n\n  neutral: `## NEUTRAL UNIVERSE \u2014 OPEN-ENDED CINEMATIC EXCELLENCE\n- No hardcoded character restrictions. Authentically portray whatever subjects the user requested.\n- If characters are specified, design authentic, expressive attire, candid human postures, and realistic demographics.\n- Prioritize atmospheric depth: volumetric light, sensory textures (rain puddles, steam, brushed metal, weathered stone), and motivated camera optics.`\n};\n\nconst rosterDoc = ROSTER_AND_AESTHETICS[videoType] || ROSTER_AND_AESTHETICS.neutral;\nconst styleGuide = STYLE_GUIDES[style] || STYLE_GUIDES.cinematic;\n\n// Decide frame count guidance\nconst ideaLength = idea.length;\nconst frameHint = ideaLength > 200 ? 'Use 6 or 9 frames for this rich story.' : 'Use 4 or 6 frames for this story.';\n\nconst systemPrompt = `# Role: Master Film Director & Visual World-Builder\n\nYou produce high-density, director-level cinematic storyboards and generative image prompts.\nYou output three structured sections in a SINGLE response. Follow the exact schema below.\n\n---\n\n${rosterDoc}\n\n---\n\n${styleGuide}\n\n---\n\n## SECTION 1 \u2014 WORLDSHEET (internal reference)\n\nOutput a JSON block (inside triple backtick json fences) with this exact schema:\n\\`\\`\\`json\n{\n  \"characters\": [\n    {\n      \"name\": \"Character Name\",\n      \"appearance\": \"Complete visual description \u2014 hair (loose for women), skin, eyes, build, facial expression\",\n      \"wardrobe\": \"Exact alluring outfit, fabrics, colors, cleavage/cut details, stockings/footwear, jewelry\",\n      \"props\": [\"prop 1\", \"prop 2\"]\n    }\n  ],\n  \"environment\": {\n    \"setting\": \"Location name, architectural style, spatial depth\",\n    \"time_of_day\": \"Specific lighting moment (e.g., golden hour, 3am blue hour, neon rain)\",\n    \"atmosphere\": \"Weather, volumetric fog, particles, mood\",\n    \"color_palette\": [\"#hex1\", \"#hex2\", \"#hex3\"],\n    \"key_details\": [\"environmental detail 1\", \"environmental detail 2\", \"clock or window detail\"]\n  },\n  \"style\": {\n    \"rendering\": \"${style}\",\n    \"lens\": \"Specific lens and focal length (e.g. 24mm anamorphic, 85mm portrait prime)\",\n    \"color_grade\": \"Color grading and contrast description\",\n    \"special_fx\": \"Lighting cues, particle effects, reflections\"\n  }\n}\n\\`\\`\\`\n\n## SECTION 2 \u2014 STORYBOARD (Director-Level Cinematic Narrative)\n\n### MANDATORY DIRECTORIAL RULES:\n1. STRICT CHARACTER FIDELITY & SECRET SAUCE: Follow the character descriptions and aesthetic standards strictly. Women must have loose untied hair, alluring wardrobe, jewelry, and must never face directly away from camera. Sia wears no stockings. Sam & Miga have orange/green streaks and tattoos.\n2. THE HOOK (FRAME 1): Frame 1 must contain a powerful, scroll-stopping visual hook that grabs the viewer instantly.\n3. FRAME COUNT: ${frameHint} Choose 4, 6, or 9 frames. Each frame corresponds to a panel in the final storyboard grid.\n4. RICH, EVOCATIVE DETAIL: Write vivid, multi-sentence descriptions for each frame. Include character choreography, micro-expressions, specific camera optics (angle, focal length, motion), motivated lighting, and sound/SFX cues. Do NOT truncate or write shallow bullet points.\n5. TRANSITIONS: Emphasize dynamic flow between frames (match cuts, lighting shifts, motion continuity).\n6. Always end with ### Director Notes (pacing, aspect ratio, audio/music atmosphere).\n\n### FORMAT:\n**Frame 1**\n- **Action:** [Vivid, scroll-stopping hook \u2014 choreography, emotional micro-expression, character movement, styling details]\n- **Camera:** [Shot composition, lens focal length, camera movement, depth of field]\n- **Lighting & SFX:** [Specific key/rim lighting, volumetric atmosphere, sound design / audio cue]\n\n(repeat for each frame)\n\n### Director Notes\n[Pacing, aspect ratio recommendation (16:9 Landscape), musical tone, and visual motif]\n\n## SECTION 3 \u2014 IMAGE PROMPT (Multi-Panel Grid Prompt for SDXL)\n\nWrite a single dense, descriptive image generation prompt for a multi-panel storyboard grid. The prompt must:\n1. Start with: \"Multi-panel storyboard grid, [N]-panel layout,\" where N matches your frame count (e.g., 4-panel, 6-panel)\n2. Systematically describe each panel position (e.g., \"panel 1 (top-left):\", \"panel 2 (top-center):\", etc.)\n3. For each panel include: canonical character appearance + exact wardrobe + action pose + camera angle + environment\n4. End with: the exact technical rendering style, lighting palette, and lens specifications\n5. CRITICAL NO-TEXT DIRECTIVE: \", no text, no words, no letters, no subtitles, no captions, no watermarks, no speech bubbles, no dialogue overlays, no labels \u2014 unless content specifically depicts a billboard, clock face, or scoreboard\"\n\nStart with: \\`IMAGE_PROMPT:\\``;\n\nconst userPrompt = `UNIVERSE: ${videoType.toUpperCase()} | STYLE: ${style.toUpperCase()}\n\nUSER CONCEPT:\n\"${idea}\"\n\nGenerate all three sections (WorldSheet JSON, Storyboard frames, Image Prompt) now.`;\n\nreturn [{\n  json: {\n    ...item,\n    chat_id: chatId,\n    session,\n    ai_payload: {\n      model: model,\n      messages: [\n        { role: 'system', content: systemPrompt },\n        { role: 'user', content: userPrompt }\n      ],\n      temperature: session.isRegen ? 0.75 : 0.65,\n      max_tokens: 4000\n    }\n  }\n}];"
+      },
+      "id": "6068809e-f918-4d3c-b66d-66f7d1d9a897",
+      "name": "Prep_Storyboard_Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "HTTP-Referer",
+              "value": "https://fastkode.com"
+            },
+            {
+              "name": "X-Title",
+              "value": "FastKode Fluid Motion"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.ai_payload) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        },
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openRouterApi"
+      },
+      "id": "104f143d-7c7b-47fc-b7ec-38d22b8668be",
+      "name": "Call_OpenRouter_Storyboard",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        224,
+        304
+      ],
+      "credentials": {
+        "openRouterApi": {
+          "id": "Dkx6FORN8rA53uMB",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "function escapeMarkdownV2(str) {\n  if (!str) return '';\n  return String(str).replace(/([_*[\\]()~`>#+\\-=|{}.!\\\\])/g, '\\\\$1');\n}\n\n// Convert Markdown to Telegraph NodeElement array with strict validation\nfunction mdToTelegraphNodes(md) {\n  const lines = (md || '').split('\\n');\n  const nodes = [];\n  let ulBuffer = [];\n\n  const flushUl = () => {\n    if (ulBuffer.length > 0) {\n      const items = ulBuffer.filter(t => t && t.trim().length > 0);\n      if (items.length > 0) {\n        nodes.push({ tag: 'ul', children: items.map(t => ({ tag: 'li', children: [t] })) });\n      }\n      ulBuffer = [];\n    }\n  };\n\n  for (const raw of lines) {\n    const line = raw.trim();\n    if (!line) { flushUl(); continue; }\n\n    if (/^#{1,2}\\s/.test(line)) {\n      flushUl();\n      const text = line.replace(/^#{1,2}\\s+/, '').trim();\n      if (text) nodes.push({ tag: 'h3', children: [text] });\n    } else if (/^#{3,4}\\s/.test(line)) {\n      flushUl();\n      const text = line.replace(/^#{3,4}\\s+/, '').trim();\n      if (text) nodes.push({ tag: 'h4', children: [text] });\n    } else if (/^[-*\u2022]\\s/.test(line)) {\n      const text = line.replace(/^[-*\u2022]\\s+/, '').replace(/\\*\\*(.+?)\\*\\*/g, '$1').trim();\n      if (text) ulBuffer.push(text);\n    } else if (/^\\*\\*(.+)\\*\\*$/.test(line)) {\n      flushUl();\n      const text = line.replace(/\\*\\*/g, '').trim();\n      if (text) nodes.push({ tag: 'h4', children: [text] });\n    } else if (/^Frame\\s+\\d+/i.test(line)) {\n      flushUl();\n      const text = line.replace(/[*#]/g, '').trim();\n      nodes.push({ tag: 'h3', children: [text] });\n    } else {\n      flushUl();\n      const text = line.replace(/\\*\\*(.+?)\\*\\*/g, '$1').replace(/\\*(.+?)\\*/g, '$1').trim();\n      if (text) nodes.push({ tag: 'p', children: [text] });\n    }\n  }\n  flushUl();\n  return nodes.length > 0 ? nodes : [{ tag: 'p', children: ['Storyboard generation completed.'] }];\n}\n\nlet staticData = {};\ntry { staticData = $getWorkflowStaticData('global'); } catch(e) {}\nstaticData.sessions = staticData.sessions || {};\n\nconst item = $json || {};\nconst dispatcher = $('Dispatcher_And_State').first().json || {};\nconst cfg = $('User_Config').first().json || {};\n\nconst chatId = dispatcher.chat_id || item.chat_id || '';\nconst token = cfg.telegram_bot_token || dispatcher.telegram_bot_token || '';\nconst telegraphToken = cfg.telegraph_access_token || dispatcher.telegraph_access_token || '';\n\nlet session = staticData.sessions[chatId] || dispatcher.session || {};\n\n// \u2500\u2500 Error handling \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nlet rawResponse = '';\nif (item.error) {\n  const errText = escapeMarkdownV2(item.error.message || JSON.stringify(item.error));\n  return [{\n    json: {\n      ...item, chat_id: chatId, telegram_bot_token: token, is_error: true,\n      send_text: `\u26a0\ufe0f *Storyboard Error:*\\n\\n\\`${errText}\\`\\n\\n\ud83d\udc47 *Choose an action:*`,\n      reply_markup: { inline_keyboard: [\n        [{ text: '\ud83d\udd04 Retry', callback_data: 'action:regen_storyboard' }],\n        [{ text: '\u274c Start Over', callback_data: 'action:reset' }]\n      ]}\n    }\n  }];\n} else if (item.choices?.[0]?.message?.content) {\n  rawResponse = item.choices[0].message.content;\n} else if (typeof item.storyboard === 'string') {\n  rawResponse = item.storyboard;\n} else if (session.storyboard) {\n  rawResponse = session.storyboard;\n} else {\n  return [{ json: { ...item, chat_id: chatId, telegram_bot_token: token, is_error: true,\n    send_text: '\u26a0\ufe0f *No storyboard content returned from AI model\\\\.*',\n    reply_markup: { inline_keyboard: [[{ text: '\ud83d\udd04 Retry', callback_data: 'action:regen_storyboard' }]] }\n  }}];\n}\n\n// \u2500\u2500 Parse 3 sections from LLM output \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nlet worldSheet = null;\nconst jsonMatch = rawResponse.match(/```json\\s*([\\s\\S]*?)```/i);\nif (jsonMatch) {\n  try { worldSheet = JSON.parse(jsonMatch[1]); } catch(e) { worldSheet = null; }\n}\n\nlet storyboardText = '';\nconst sb2Match = rawResponse.match(/##\\s*SECTION\\s*2[^\\n]*\\n([\\s\\S]*?)(?=##\\s*SECTION\\s*3|IMAGE_PROMPT:|$)/i);\nif (sb2Match) {\n  storyboardText = sb2Match[1].trim();\n} else {\n  const frameStart = rawResponse.search(/(?:\\*\\*|###?\\s*)Frame\\s*1/i);\n  const imgStart = rawResponse.search(/IMAGE_PROMPT:/i);\n  if (frameStart >= 0) {\n    storyboardText = rawResponse.slice(frameStart, imgStart > 0 ? imgStart : undefined).trim();\n  } else {\n    storyboardText = rawResponse;\n  }\n}\n\nconst frameMatches = storyboardText.match(/(?:\\*\\*|###?\\s*)Frame\\s*\\d+/gi) || [];\nconst frameCount = frameMatches.length || 6;\n\nlet imagePrompt = '';\nconst imgMatch = rawResponse.match(/IMAGE_PROMPT:\\s*([\\s\\S]*?)$/i);\nif (imgMatch) {\n  imagePrompt = imgMatch[1].trim();\n}\n\n// \u2500\u2500 Save to session \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nsession.worldSheet = worldSheet;\nsession.storyboard = storyboardText;\nsession.imagePrompt = imagePrompt;\nsession.frameCount = frameCount;\nsession.stage = 'storyboard_review';\n\n// \u2500\u2500 Publish / In-Place Update to Telegraph \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst ideaSnippet = (session.idea || 'Concept').substring(0, 60);\nconst telegraphTitle = `${(session.video_type || 'Neutral').toUpperCase()} \u00b7 ${(session.style || 'Cinematic').toUpperCase()} \u2014 ${ideaSnippet}`;\nconst telegraphContent = mdToTelegraphNodes(storyboardText);\n\nlet telegraphUrl = session.telegraph_url || null;\nlet telegraphPath = session.telegraph_path || null;\nlet telegraphDebug = { attempted: false };\n\nif (telegraphToken) {\n  telegraphDebug.attempted = true;\n  const isUpdate = !!telegraphPath;\n  const endpoint = isUpdate ? 'https://api.telegra.ph/editPage' : 'https://api.telegra.ph/createPage';\n  const reqPayload = {\n    access_token: telegraphToken,\n    title: telegraphTitle,\n    author_name: 'Fluid Motion Studio',\n    content: telegraphContent,\n    return_content: false,\n    ...(isUpdate ? { path: telegraphPath } : {})\n  };\n\n  // Attempt 1: this.helpers.httpRequest with both data & body (Axios compatibility)\n  try {\n    let tRes = await this.helpers.httpRequest({\n      method: 'POST',\n      url: endpoint,\n      headers: { 'Content-Type': 'application/json' },\n      data: reqPayload,\n      body: reqPayload,\n      json: true\n    });\n    if (typeof tRes === 'string') {\n      try { tRes = JSON.parse(tRes); } catch(err) {}\n    }\n    const resData = tRes?.data || tRes;\n    telegraphDebug.attempt1_res = resData?.ok ? 'ok' : (resData?.error || 'not_ok');\n    if (resData?.ok && resData?.result) {\n      telegraphUrl = resData.result.url;\n      telegraphPath = resData.result.path || (resData.result.url ? resData.result.url.replace(/^https?:\\/\\/telegra\\.ph\\//, '') : telegraphPath);\n    }\n  } catch(e1) {\n    telegraphDebug.attempt1_err = e1.message || String(e1);\n  }\n\n  // Attempt 2: Fallback to createPage with stringified data if attempt 1 did not get a URL\n  if (!telegraphUrl) {\n    try {\n      let tRes2 = await this.helpers.httpRequest({\n        method: 'POST',\n        url: 'https://api.telegra.ph/createPage',\n        headers: { 'Content-Type': 'application/json' },\n        data: JSON.stringify({\n          access_token: telegraphToken,\n          title: telegraphTitle,\n          author_name: 'Fluid Motion Studio',\n          content: telegraphContent,\n          return_content: false\n        }),\n        body: JSON.stringify({\n          access_token: telegraphToken,\n          title: telegraphTitle,\n          author_name: 'Fluid Motion Studio',\n          content: telegraphContent,\n          return_content: false\n        })\n      });\n      if (typeof tRes2 === 'string') {\n        try { tRes2 = JSON.parse(tRes2); } catch(err) {}\n      }\n      const resData2 = tRes2?.data || tRes2;\n      telegraphDebug.attempt2_res = resData2?.ok ? 'ok' : (resData2?.error || 'not_ok');\n      if (resData2?.ok && resData2?.result) {\n        telegraphUrl = resData2.result.url;\n        telegraphPath = resData2.result.path || (resData2.result.url ? resData2.result.url.replace(/^https?:\\/\\/telegra\\.ph\\//, '') : null);\n      }\n    } catch(e2) {\n      telegraphDebug.attempt2_err = e2.message || String(e2);\n    }\n  }\n\n  // Attempt 3: Native global fetch fallback\n  if (!telegraphUrl && typeof fetch === 'function') {\n    try {\n      const fRes = await fetch('https://api.telegra.ph/createPage', {\n        method: 'POST',\n        headers: { 'Content-Type': 'application/json' },\n        body: JSON.stringify({\n          access_token: telegraphToken,\n          title: telegraphTitle,\n          author_name: 'Fluid Motion Studio',\n          content: telegraphContent,\n          return_content: false\n        })\n      });\n      const fData = await fRes.json();\n      telegraphDebug.attempt3_res = fData?.ok ? 'ok' : (fData?.error || 'not_ok');\n      if (fData?.ok && fData?.result) {\n        telegraphUrl = fData.result.url;\n        telegraphPath = fData.result.path || (fData.result.url ? fData.result.url.replace(/^https?:\\/\\/telegra\\.ph\\//, '') : null);\n      }\n    } catch(e3) {\n      telegraphDebug.attempt3_err = e3.message || String(e3);\n    }\n  }\n}\n\n// Persist Telegraph details in session\nif (telegraphPath) session.telegraph_path = telegraphPath;\nif (telegraphUrl) session.telegraph_url = telegraphUrl;\nstaticData.sessions[chatId] = session;\n\n// \u2500\u2500 Build Telegram message \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst styleLabel = escapeMarkdownV2((session.style || 'cinematic').toUpperCase());\nconst universeLabel = escapeMarkdownV2((session.video_type || 'neutral').toUpperCase());\nconst frameLabel = escapeMarkdownV2(String(frameCount));\nconst ideaLabel = escapeMarkdownV2(ideaSnippet);\n\nconst replyMarkup = {\n  inline_keyboard: [\n    [\n      { text: '\u2705 Approve & Generate Image', callback_data: 'action:approve_storyboard' },\n      { text: '\ud83d\udd04 Regenerate', callback_data: 'action:regen_storyboard' }\n    ],\n    [{ text: '\u274c Start Over', callback_data: 'action:reset' }]\n  ]\n};\n\nlet sendText;\nif (telegraphUrl) {\n  sendText = `\ud83c\udfac *Storyboard Ready\\\\!*\n\n*Universe:* ${universeLabel} \\\\| *Style:* ${styleLabel}\n*Frames:* ${frameLabel} panels\n*Concept:* _${ideaLabel}_\n\n\ud83d\udcd6 [View Full Storyboard](${telegraphUrl})\n\n\ud83d\udc47 *Approve to generate the storyboard image:*`;\n} else {\n  // Safe truncation avoiding markdown breaks\n  const safeSnippet = escapeMarkdownV2(storyboardText.slice(0, 500).replace(/\\*\\*/g, ''));\n  sendText = `\ud83c\udfac *Storyboard Ready \\\\(${frameLabel} frames\\\\)\\\\!*\n\n*Universe:* ${universeLabel} \\\\| *Style:* ${styleLabel}\n\n_${safeSnippet}\\\\.\\\\.\\\\._\n\n\ud83d\udc47 *Approve to generate the image:*`;\n}\n\nreturn [{\n  json: {\n    ...item,\n    chat_id: chatId,\n    telegram_bot_token: token,\n    is_error: false,\n    telegraph_url: telegraphUrl,\n    telegraph_path: telegraphPath,\n    telegraph_debug: telegraphDebug,\n    send_text: sendText,\n    reply_markup: replyMarkup\n  }\n}];"
+      },
+      "id": "e774a9b5-ddb7-4b6c-8edb-48bd87615af0",
+      "name": "Format_Storyboard_Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.telegram.org/bot' + $json.telegram_bot_token + '/sendMessage' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chat_id, text: $json.send_text, parse_mode: 'MarkdownV2', reply_markup: $json.reply_markup }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 400
+            }
+          }
+        }
+      },
+      "id": "21177112-94f9-42b8-bd7b-8dadb08a0510",
+      "name": "Send_Storyboard_Telegram",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        672,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $json;\nconst session = item.session || $('Dispatcher_And_State').first().json?.session || {};\n\n// Determine prompt source\nlet sourcePrompt = session.imagePrompt || session.idea || 'cinematic scene';\n// If imagePrompt wasn't extracted properly and we have to rely on storyboard, clean it up\nif (sourcePrompt.length > 800) {\n    sourcePrompt = sourcePrompt.substring(0, 800).replace(/[*#_~]/g, '');\n}\n\n// Add storyboard modifiers if it's a multi-frame request\nconst isGrid = (session.frameCount && session.frameCount > 1);\nconst gridModifiers = isGrid ? `storyboard grid, ${session.frameCount} panels, sequential art, comic page, multiple frames, ` : '';\n\n// Animagine XL 4.0 recommended positive prompt format\nconst basePrompt = `masterpiece, best quality, ultra-detailed, highres, cinematic lighting, ${gridModifiers}${sourcePrompt}`;\n\n// Animagine XL 4.0 recommended negative prompt\nconst negativePrompt = `lowres, bad anatomy, bad hands, text, words, letters, subtitles, captions, watermarks, speech bubbles, dialogue, labels, written signs, typography, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry, artist name, extra limbs, distorted`;\n\n// Orientation: default landscape for storyboard grid\nconst orientation = session.orientation || 'landscape';\nconst width = orientation === 'portrait' ? 720 : 1280;\nconst height = orientation === 'portrait' ? 1280 : 720;\n\n// ComfyUI workflow with SDXL\nconst workflow = {\n  \"1\": {\n    \"class_type\": \"CheckpointLoaderSimple\",\n    \"inputs\": { \"ckpt_name\": \"animagine-xl-4.0.safetensors\" }\n  },\n  \"2\": {\n    \"class_type\": \"CLIPTextEncode\",\n    \"inputs\": { \"text\": basePrompt, \"clip\": [\"1\", 1] }\n  },\n  \"3\": {\n    \"class_type\": \"CLIPTextEncode\",\n    \"inputs\": { \"text\": negativePrompt, \"clip\": [\"1\", 1] }\n  },\n  \"4\": {\n    \"class_type\": \"EmptyLatentImage\",\n    \"inputs\": { \"width\": width, \"height\": height, \"batch_size\": 1 }\n  },\n  \"5\": {\n    \"class_type\": \"KSampler\",\n    \"inputs\": {\n      \"model\": [\"1\", 0],\n      \"positive\": [\"2\", 0],\n      \"negative\": [\"3\", 0],\n      \"latent_image\": [\"4\", 0],\n      \"seed\": session.seed || Math.floor(Math.random() * 2147483647),\n      \"steps\": 28,\n      \"cfg\": 6.5,\n      \"sampler_name\": \"euler_ancestral\",\n      \"scheduler\": \"karras\",\n      \"denoise\": 1.0\n    }\n  },\n  \"6\": {\n    \"class_type\": \"VAEDecode\",\n    \"inputs\": { \"samples\": [\"5\", 0], \"vae\": [\"1\", 2] }\n  },\n  \"7\": {\n    \"class_type\": \"SaveImage\",\n    \"inputs\": { \"images\": [\"6\", 0], \"filename_prefix\": \"fluid_motion\" }\n  }\n};\n\nreturn [{\n  json: {\n    ...item,\n    session,\n    runpod_payload: { input: { workflow } }\n  }\n}];\n"
+      },
+      "id": "0d9380c8-32b0-4392-a2e2-df2bbc768fed",
+      "name": "Prep_RunPod_Image_Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        688
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.runpod_image_endpoint_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.runpod_payload) }}",
+        "options": {
+          "timeout": 180000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth"
+      },
+      "id": "dbc806ae-c115-4b29-8ed0-094924dfcc76",
+      "name": "Call_RunPod_Image_Worker",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        224,
+        688
+      ],
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "RqHQQ4NPFw46X9Ul",
+          "name": "Runpod key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "function escapeMarkdownV2(str) {\n  if (!str) return '';\n  return String(str).replace(/([_*[\\]()~`>#+\\-=|{}.!\\\\])/g, '\\\\$1');\n}\n\nlet staticData = {};\ntry { staticData = $getWorkflowStaticData('global'); } catch(e) {}\nstaticData.sessions = staticData.sessions || {};\n\nconst item = $json || {};\nconst chatId = item.chat_id || '';\nconst session = staticData.sessions[chatId] || item.session || {};\nconst hookSnippet = escapeMarkdownV2((session.storyboard || '').substring(0, 100));\n\nconst text = `\ud83c\udfa5 *Video Render Pipeline Engaged \\\\(Stage V4\\\\)*\\n\\n\u2022 *Tier:* Standard \\\\(LTX Video Worker\\\\)\\n\u2022 *Duration:* 5s @ 24fps \\\\(120 frames\\\\)\\n\u2022 *Storyboard Hook:* _${hookSnippet}\\\\.\\\\.\\\\._\\n\\n\ud83d\udd25 _Serverless worker is scaling up from zero \\\\(workersMin=0\\\\)\\\\. Generating your video\\\\.\\\\.\\\\._\\n\\n_\\\\(When the RunPod video worker completes, your MP4 video stream delivers directly to this chat\\\\!\\\\)_`;\n\nconst replyMarkup = {\n  inline_keyboard: [\n    [\n      { text: '\ud83c\udfac Start New Production', callback_data: 'action:reset' }\n    ]\n  ]\n};\n\nreturn [{\n  json: {\n    ...item,\n    send_text: text,\n    reply_markup: replyMarkup\n  }\n}];"
+      },
+      "id": "e2041351-57b6-4322-9200-14ef86944f61",
+      "name": "Dispatch_Video_Job",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        864
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.telegram.org/bot' + $json.telegram_bot_token + '/sendMessage' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chat_id, text: $json.send_text, parse_mode: 'MarkdownV2', reply_markup: $json.reply_markup }) }}",
+        "options": {}
+      },
+      "id": "3ced5d88-7756-476c-afdc-237a14d99f4d",
+      "name": "Send_Video_Status_Telegram",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        224,
+        864
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "function escapeMarkdownV2(str) {\n  if (!str) return '';\n  return String(str).replace(/([_*[\\]()~`>#+\\-=|{}.!\\\\])/g, '\\\\$1');\n}\n\nconst item = $json || {};\nconst dispatcher = $('Dispatcher_And_State').first().json || {};\nconst cfg = $('User_Config').first().json || {};\n\nconst chatId = dispatcher.chat_id || item.chat_id || '';\nconst token = cfg.telegram_bot_token || dispatcher.telegram_bot_token || item.telegram_bot_token || '';\n\nlet staticData = {};\ntry { staticData = $getWorkflowStaticData('global'); } catch(e) {}\nstaticData.sessions = staticData.sessions || {};\nlet session = staticData.sessions[chatId] || dispatcher.session || {};\n\nlet base64Data = '';\nif (item.output && item.output.images && item.output.images[0] && item.output.images[0].data) {\n  base64Data = item.output.images[0].data;\n} else if (item.images && item.images[0] && item.images[0].data) {\n  base64Data = item.images[0].data;\n} else if (item.output && item.output.image) {\n  base64Data = item.output.image;\n} else if (item.image) {\n  base64Data = item.image;\n} else if (item.reference_image_base64) {\n  base64Data = item.reference_image_base64;\n} else if (session.reference_image_base64) {\n  base64Data = session.reference_image_base64;\n}\n\nlet isError = !base64Data;\nlet errorMessage = '';\n\nif (isError) {\n  errorMessage = item.error ? (item.error.message || JSON.stringify(item.error)) : (item.status === 'FAILED' ? 'RunPod job status: FAILED' : 'No image data returned from RunPod SDXL worker.');\n} else {\n  session.reference_image_base64 = base64Data;\n  session.stage = 'image_approved';\n  staticData.sessions[chatId] = session;\n}\n\nconst caption = isError\n  ? `\u26a0\ufe0f *RunPod Image Worker Error:*\\n\\n\\`${escapeMarkdownV2(errorMessage)}\\`\\n\\n\ud83d\udc47 *Choose an action to retry:*`\n  : `\u2728 *Reference Image Rendered \\\\(Stage V3\\\\)*\\n\\n\u2022 *Model:* Animagine XL 4\\\\.0 SDXL\\n\u2022 *Resolution:* 1280x720 \\\\(Landscape\\\\)\\n\\n\ud83d\udc47 *Proceed to generate video:*`;\n\nconst replyMarkup = isError\n  ? {\n      inline_keyboard: [\n        [{ text: '\ud83d\udd04 Retry Image Render', callback_data: 'action:regen_image' }],\n        [{ text: '\u274c Start Over', callback_data: 'action:reset' }]\n      ]\n    }\n  : {\n      inline_keyboard: [\n        [\n          { text: '\ud83c\udfac Generate Video (Stage V4)', callback_data: 'action:confirm_image' },\n          { text: '\ud83d\udd04 Re-roll Image', callback_data: 'action:regen_image' }\n        ],\n        [\n          { text: '\u274c Start Over', callback_data: 'action:reset' }\n        ]\n      ]\n    };\n\nconst result = {\n  json: {\n    ...item,\n    chat_id: chatId,\n    telegram_bot_token: token,\n    is_error: isError,\n    error_message: errorMessage,\n    caption: caption,\n    send_text: caption,\n    reply_markup: replyMarkup\n  }\n};\n\nif (base64Data) {\n  if (base64Data.includes(\",\")) base64Data = base64Data.split(\",\")[1];\n  result.binary = {\n    photo: {\n      data: base64Data,\n      mimeType: 'image/png',\n      fileName: 'reference_character.png'\n    }\n  };\n}\n\nreturn [result];"
+      },
+      "id": "e492bbd0-8f11-4192-9333-a128e469d801",
+      "name": "Process_Image_Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        688
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.telegram.org/bot' + $json.telegram_bot_token + '/sendPhoto' }}",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "chat_id",
+              "value": "={{ $json.chat_id }}"
+            },
+            {
+              "name": "caption",
+              "value": "={{ $json.caption }}"
+            },
+            {
+              "name": "parse_mode",
+              "value": "MarkdownV2"
+            },
+            {
+              "name": "reply_markup",
+              "value": "={{ JSON.stringify($json.reply_markup) }}"
+            },
+            {
+              "parameterType": "form-data",
+              "name": "photo",
+              "value": "",
+              "valueType": "binary",
+              "inputDataFieldName": "photo"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f882a1e0-3e21-4d11-a832-c319e578a902",
+      "name": "Send_Photo_Telegram",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        672,
+        688
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.telegram.org/bot' + $json.telegram_bot_token + '/sendMessage' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chat_id, text: '\u23f3 <b>Crafting Storyboard...</b>\\n\\n<i>Director is formulating scene hooks, camera angles, and frame breakdowns...</i>', parse_mode: 'HTML' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "progress-storyboard-01",
+      "name": "Send_Storyboard_Progress",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -112,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.telegram.org/bot' + $json.telegram_bot_token + '/sendMessage' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chat_id, text: '\ud83c\udfa8 <b>Rendering Reference Frame...</b>\\n\\n\u26a1 <i>Dispatching to RunPod SDXL Serverless GPU (Animagine XL 4.0)...</i>', parse_mode: 'HTML' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "progress-image-01",
+      "name": "Send_Image_Progress",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -112,
+        688
+      ]
+    }
+  ],
+  "connections": {
+    "Telegram_Trigger": {
+      "main": [
+        [
+          {
+            "node": "User_Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "User_Config": {
+      "main": [
+        [
+          {
+            "node": "Dispatcher_And_State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dispatcher_And_State": {
+      "main": [
+        [
+          {
+            "node": "Route_Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route_Event": {
+      "main": [
+        [
+          {
+            "node": "Send_Welcome_Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send_Message_Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send_Storyboard_Progress",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prep_Storyboard_Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send_Image_Progress",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prep_RunPod_Image_Payload",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Dispatch_Video_Job",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format_Storyboard_Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Process_Image_Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep_Storyboard_Prompt": {
+      "main": [
+        [
+          {
+            "node": "Call_OpenRouter_Storyboard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call_OpenRouter_Storyboard": {
+      "main": [
+        [
+          {
+            "node": "Format_Storyboard_Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format_Storyboard_Response": {
+      "main": [
+        [
+          {
+            "node": "Send_Storyboard_Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dispatch_Video_Job": {
+      "main": [
+        [
+          {
+            "node": "Send_Video_Status_Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep_RunPod_Image_Payload": {
+      "main": [
+        [
+          {
+            "node": "Call_RunPod_Image_Worker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call_RunPod_Image_Worker": {
+      "main": [
+        [
+          {
+            "node": "Process_Image_Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process_Image_Output": {
+      "main": [
+        [
+          {
+            "node": "Send_Photo_Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send_Storyboard_Progress": {
+      "main": [
+        []
+      ]
+    },
+    "Send_Image_Progress": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  }
+}

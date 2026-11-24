@@ -35,16 +35,60 @@ comfyui-workflows/
 ├── app.js                   # Client-side dynamic data loader and search engine
 ├── workflow_details.json    # Complete JSON metadata database (423 workflows indexed)
 ├── README.md                # Project documentation and usage guide
-└── workflows/               # Directory containing all 423 ComfyUI workflow JSON files
-    ├── 1 - Basic Vid2Vid 1 ControlNet.json
-    ├── 1) ControlNet_Passes_Export_v2.1.json
-    ├── 2 - Vid2Vid Multi-ControlNet.json
-    ├── 2) Animation Raw - LCM v2.1.json
-    ├── 200524_Mickmumpitz_3D-RENDERING_IMG_SD15_SIMPLE_v3.json
-    ├── 3d-model-generator-o68hj.json
-    ├── 3d-tripoSR-layered-diffusion.json
-    ├── ... (423 JSON files total)
+│
+├── workflows/               # 423 legacy ComfyUI workflow JSON files
+│   ├── AnimateDiff-simple.json
+│   ├── ... (423 JSON files total)
+│
+├── docs/                    # Project documentation & agent prompts
+│   ├── plan.md              # Fluid Motion architecture plan
+│   └── gems/                # AI agent system prompts
+│       ├── storyboard-writer.md
+│       ├── neutral-scene-architect.md
+│       ├── pro-scene-architect.md
+│       └── diva-nation-scene-architect.md
+│
+├── n8n/                     # n8n workflow automations (template-first architecture)
+│   ├── docs/                # Infrastructure & setup guides
+│   ├── data/                # Workflow runtime data
+│   ├── tests/               # Workflow validation tests
+│   └── workflows/
+│       ├── content-social/  # LinkedIn daily writer, social bots
+│       └── video-gen/       # ⬅ Fluid Motion workflows
+│           ├── fk_video_gen_bot_flow/  # Telegram HITL video generation bot
+│           └── fluid_motion/           # Direct API video pipeline
+│
+└── runpod/                  # ⬅ Serverless compute layer (self-contained, portable)
+    ├── config/
+    │   ├── endpoint_defaults.json   # Serverless settings (workersMin=0, idleTimeout=10s)
+    │   └── model_manifest.json      # Model names, paths, sources
+    ├── image_worker/                # ComfyUI + SDXL anime image generation
+    │   ├── Dockerfile
+    │   ├── handler.py
+    │   ├── comfy_workflow_draft.json
+    │   └── comfy_workflow_final.json
+    └── video_worker/                # LTX (standard) + Minimax (premium) video gen
+        ├── Dockerfile
+        └── handler.py
 ```
+
+---
+
+## 🎬 Fluid Motion — Serverless Video Generation Pipeline
+
+A cost-effective, serverless video generation pipeline built on top of this workflow library. Orchestrated by **n8n** with **RunPod Serverless** compute.
+
+| Component | Description |
+|-----------|-------------|
+| **Telegram Bot** (`fk_video_gen_bot_flow`) | Human-in-the-loop creative workflow: idea → storyboard → reference image → video |
+| **Direct API** (`fluid_motion`) | Headless webhook pipeline: payload in → MP4 out |
+| **Image Worker** | ComfyUI + SDXL anime (Animagine XL 4.0) with draft/final quality tiers |
+| **Video Worker** | LTX (standard) + Minimax H3 Max (premium) image-to-video |
+
+**Cost strategy**: `workersMin=0` (scale-to-zero), VolumeCache for fast cold starts, draft mode for iterations, final quality only after user confirms.
+
+→ See [`runpod/README.md`](runpod/README.md) for serverless architecture details.
+→ See [`docs/plan.md`](docs/plan.md) for the full architecture plan.
 
 ---
 

@@ -1,0 +1,51 @@
+{
+  "image_worker": {
+    "gpu_type": "NVIDIA A40",
+    "workers_min": 0,
+    "workers_max": 4,
+    "idle_timeout_seconds": 10,
+    "execution_timeout_seconds": 600,
+    "volume_mount_path": "/runpod-volume",
+    "volume_cache_enabled": true,
+    "network_volume_id": "8g6tmgn0wk",
+    "network_volume_size_gb": 24,
+    "network_volume_tier": "STANDARD",
+    "data_center_id": "EU-RO-1",
+    "endpoint_id": "8ezgyyjq87n2h4",
+    "endpoint_runsync_url": "https://api.runpod.ai/v2/8ezgyyjq87n2h4/runsync",
+    "notes": {
+      "workers_min": "Scale to zero — $0 idle cost. HITL flow has long user pauses between regenerations.",
+      "idle_timeout": "Range 5-15s. Billed during idle. Keep low for HITL Telegram flows.",
+      "execution_timeout": "Default 600s. Tune up if 4K upscale/refine pass exceeds this.",
+      "gpu_type": "A40 is cost-effective for SDXL. Upgrade to A100 only if generation time is unacceptable."
+    }
+  },
+  "video_worker": {
+    "gpu_type": "NVIDIA A100 80GB",
+    "workers_min": 0,
+    "workers_max": 4,
+    "idle_timeout_seconds": 10,
+    "execution_timeout_seconds": 600,
+    "network_volume_id": "8g6tmgn0wk",
+    "network_volume_size_gb": 24,
+    "network_volume_tier": "STANDARD",
+    "data_center_id": "EU-RO-1",
+    "endpoint_id": "dwtma7j6xegnfz",
+    "endpoint_runsync_url": "https://api.runpod.ai/v2/dwtma7j6xegnfz/runsync",
+    "notes": {
+      "gpu_type": "A100/4090 for video models. Scale-to-zero keeps idle compute at $0.",
+      "idle_timeout": "Keep low — video gen is fire-and-forget, no rapid regeneration loops."
+    }
+  },
+  "cost_policy": {
+    "draft_before_final": true,
+    "scale_to_zero_default": true,
+    "max_style_loras": 2,
+    "no_weights_in_docker_image": true,
+    "cache_on_network_volume": true,
+    "docs": {
+      "volume_cache": "https://docs.runpod.io/serverless/development/volume-cache",
+      "endpoint_config": "https://docs.runpod.io/serverless/endpoints/endpoint-configurations"
+    }
+  }
+}

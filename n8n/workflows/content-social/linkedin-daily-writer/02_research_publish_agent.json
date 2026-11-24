@@ -1,0 +1,1069 @@
+{
+  "name": "LinkedIn Daily Writer - 02 Research & Publish Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message",
+          "callback_query"
+        ],
+        "additionalFields": {}
+      },
+      "id": "10000000-0000-0000-0000-000000000001",
+      "name": "Telegram_Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        100,
+        500
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "DbpH0NYCRqtNRymW",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg-auth-chat-id",
+              "name": "authorized_chat_id",
+              "value": "6386729762",
+              "type": "string"
+            },
+            {
+              "id": "cfg-linkedin-urn",
+              "name": "linkedin_author_urn",
+              "value": "urn:li:person:dH38GqfHh5",
+              "type": "string"
+            },
+            {
+              "id": "cfg-model",
+              "name": "openrouter_model",
+              "value": "openrouter/auto",
+              "type": "string"
+            },
+            {
+              "id": "cfg-openrouter-key",
+              "name": "openrouter_api_key",
+              "value": "YOUR_OPENROUTER_API_KEY",
+              "type": "string"
+            },
+            {
+              "id": "cfg-bot-token",
+              "name": "telegram_bot_token",
+              "value": "YOUR_TELEGRAM_BOT_TOKEN",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "20000000-0000-0000-0000-000000000002",
+      "name": "User_Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        300,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $('Telegram_Trigger').first().json;\nconst cfg = $('User_Config').first().json;\n\nlet staticData = {};\ntry {\n  staticData = $getWorkflowStaticData('global');\n} catch (e) {\n  staticData = {};\n}\nstaticData.sessions = staticData.sessions || {};\nstaticData.history = staticData.history || [];\nstaticData.ledger = staticData.ledger || [];\n\nlet chatId = '';\nlet eventType = 'ignore';\nlet payload = {};\n\nconst getSession = (cid) => {\n  return staticData.sessions[cid] || {};\n};\n\nconst saveSession = (cid, data) => {\n  staticData.sessions[cid] = data;\n};\n\nconst getHistory = (cid) => {\n  return (staticData.history || []).filter(h => h.chatId === cid);\n};\n\nconst cleanWords = (txt) => {\n  return (txt || '').toLowerCase().replace(/[^a-z0-9\\s]/g, ' ').split(/\\s+/).filter(w => w.length > 3);\n};\n\nconst calculateOverlap = (wordsA, wordsB) => {\n  if (!wordsA.length || !wordsB.length) return 0;\n  const setB = new Set(wordsB);\n  const intersection = wordsA.filter(w => setB.has(w));\n  return intersection.length / Math.min(wordsA.length, wordsB.length);\n};\n\nconst buildResumePayload = (session) => {\n  const base = { session, topic: session.topic, format: session.format };\n  const draft = session.draft || session.cachedDraft;\n  if ((session.step === 'draft_ready' || session.step === 'dup_found' || draft) && draft) {\n    session.draft = draft;\n    if (!session.chosenHook && draft) {\n      session.chosenHook = draft.split('\\n')[0].trim();\n    }\n    session.step = 'draft_ready';\n    const isArticle = (session.format === 'article');\n    const cardText = isArticle\n      ? `\ud83d\udcf0 *LinkedIn Long Article Draft Ready:*\\n\\n${draft}\\n\\n\ud83d\udccc *Note:* LinkedIn API does not support publishing Articles directly. Copy this text and paste it into linkedin.com/pulse.`\n      : `\u270d\ufe0f *LinkedIn Feed Post Ready:*\\n\\n${draft}\\n\\n\ud83d\udc47 *Tap below to publish live or regenerate:*`;\n    const replyMarkup = isArticle\n      ? { inline_keyboard: [ [ { text: '\ud83d\udd04 Regenerate Article', callback_data: 'action:regenerate' }, { text: '\u274c Cancel', callback_data: 'action:cancel' } ] ] }\n      : { inline_keyboard: [ [ { text: '\ud83d\ude80 Publish to LinkedIn', callback_data: 'action:publish' }, { text: '\ud83d\udd04 Regenerate Post', callback_data: 'action:regenerate' } ], [ { text: '\u274c Cancel', callback_data: 'action:cancel' } ] ] };\n    return {\n      eventType: 'show_draft',\n      payload: { ...base, post_content: draft, draft_card_text: cardText, reply_markup: replyMarkup, chosenHook: session.chosenHook }\n    };\n  } else if (session.step === 'gen_body' && session.chosenHook) {\n    return {\n      eventType: 'gen_body',\n      payload: { ...base, chosenHook: session.chosenHook }\n    };\n  } else if (session.step === 'gen_hooks' && session.persona && session.tone) {\n    return {\n      eventType: 'gen_hooks',\n      payload: { ...base, persona: session.persona, tone: session.tone }\n    };\n  } else if (session.step === 'prompt_tone' && session.persona) {\n    return {\n      eventType: 'prompt_tone',\n      payload: { ...base, persona: session.persona }\n    };\n  } else if (session.step === 'prompt_persona') {\n    return {\n      eventType: 'prompt_persona',\n      payload: { ...base }\n    };\n  } else {\n    return {\n      eventType: session.step || 'prompt_format',\n      payload: { ...base }\n    };\n  }\n};\n\nconst makeGreeting = (session) => {\n  const hasActive = !!(session && session.topic);\n  let greetingText = '';\n  let replyMarkup = undefined;\n\n  if (hasActive) {\n    const stepLabel = session.step === 'draft_ready' ? 'Draft Ready to Publish' : session.step === 'dup_found' ? 'Existing Draft Found' : session.step === 'gen_body' ? 'Hook Selected' : session.step === 'gen_hooks' ? 'Tone Selected' : session.step === 'prompt_tone' ? 'Persona Selected' : session.step === 'prompt_persona' ? 'Format Selected' : 'Format Selection';\n    greetingText = `\ud83d\udc4b *Hey Sam!*\\n\\nYou have an active draft in progress:\\n\ud83d\udccc *Topic:* \"${(session.topic || '').substring(0, 80)}...\"\\n\ud83d\udccd *Progress:* ${stepLabel}\\n\\n\ud83d\udc47 *Tap below to continue, or send a new topic:*`;\n    replyMarkup = {\n      inline_keyboard: [\n        [\n          { text: '\ud83d\udd04 Resume Active Draft', callback_data: 'action:resume' },\n          { text: '\u274c Cancel & Clear', callback_data: 'action:cancel' }\n        ]\n      ]\n    };\n  } else {\n    greetingText = `\ud83d\udc4b *Hey Sam! Ready to write for LinkedIn.*\\n\\nSend me:\\n\u2022 A topic, thought, or architecture note\\n\u2022 An article, repo, or blog URL\\n\u2022 Production benchmarks or metrics\\n\\n\ud83d\udca1 *Commands:*\\n\u2022 \\`/resume\\` \u2014 Continue last draft\\n\u2022 \\`/cancel\\` \u2014 Reset active session`;\n  }\n\n  return {\n    has_active_session: hasActive,\n    greeting_text: greetingText,\n    reply_markup: replyMarkup\n  };\n};\n\nif (raw.callback_query) {\n  chatId = String(raw.callback_query.message.chat.id);\n  const data = raw.callback_query.data || '';\n  let session = getSession(chatId);\n\n  if (data === 'action:cancel') {\n    saveSession(chatId, {});\n    eventType = 'cancelled';\n  } else if (data === 'action:resume') {\n    if (session.topic) {\n      const res = buildResumePayload(session);\n      eventType = res.eventType;\n      payload = res.payload;\n    } else {\n      eventType = 'greeting';\n      payload = makeGreeting(null);\n    }\n  } else if (data === 'action:use_cached') {\n    const draft = session.cachedDraft || session.draft || '';\n    session.draft = draft;\n    if (!session.chosenHook && draft) {\n      session.chosenHook = draft.split('\\n')[0].trim();\n    }\n    session.step = 'draft_ready';\n    saveSession(chatId, session);\n    const isArticle = (session.format === 'article');\n    const cardText = isArticle\n      ? `\ud83d\udcf0 *LinkedIn Long Article Draft Ready:*\\n\\n${draft}\\n\\n\ud83d\udccc *Note:* LinkedIn API does not support publishing Articles directly. Copy this text and paste it into linkedin.com/pulse.`\n      : `\u270d\ufe0f *LinkedIn Feed Post Ready:*\\n\\n${draft}\\n\\n\ud83d\udc47 *Tap below to publish live or regenerate:*`;\n    const replyMarkup = isArticle\n      ? { inline_keyboard: [ [ { text: '\ud83d\udd04 Regenerate Article', callback_data: 'action:regenerate' }, { text: '\u274c Cancel', callback_data: 'action:cancel' } ] ] }\n      : { inline_keyboard: [ [ { text: '\ud83d\ude80 Publish to LinkedIn', callback_data: 'action:publish' }, { text: '\ud83d\udd04 Regenerate Post', callback_data: 'action:regenerate' } ], [ { text: '\u274c Cancel', callback_data: 'action:cancel' } ] ] };\n    eventType = 'show_draft';\n    payload = { session, topic: session.topic, format: session.format, post_content: draft, draft_card_text: cardText, reply_markup: replyMarkup, chosenHook: session.chosenHook };\n  } else if (data === 'action:start_fresh') {\n    session.step = 'prompt_format';\n    session.draft = undefined;\n    session.cachedDraft = undefined;\n    saveSession(chatId, session);\n    eventType = 'prompt_format';\n    payload = { topic: session.topic, urls: session.urls };\n  } else if (data.startsWith('fmt:')) {\n    session.format = data.replace('fmt:', '');\n    session.step = 'prompt_persona';\n    saveSession(chatId, session);\n    eventType = 'prompt_persona';\n    payload = { format: session.format, topic: session.topic, session };\n  } else if (data.startsWith('p:')) {\n    session.persona = data.replace('p:', '');\n    session.step = 'prompt_tone';\n    saveSession(chatId, session);\n    eventType = 'prompt_tone';\n    payload = { persona: session.persona, format: session.format, session };\n  } else if (data.startsWith('t:')) {\n    session.tone = data.replace('t:', '');\n    session.step = 'gen_hooks';\n    saveSession(chatId, session);\n    eventType = 'gen_hooks';\n    payload = { persona: session.persona, tone: session.tone, format: session.format, session };\n  } else if (data === 'h:regen') {\n    eventType = 'gen_hooks';\n    payload = { persona: session.persona, tone: session.tone, format: session.format, session, isRegenHooks: true };\n  } else if (data.startsWith('h:')) {\n    const hookIndex = parseInt(data.replace('h:', ''), 10);\n    const chosenHook = (session.hooks && session.hooks[hookIndex]) ? session.hooks[hookIndex] : '';\n    session.chosenHook = chosenHook;\n    session.step = 'gen_body';\n    saveSession(chatId, session);\n    eventType = 'gen_body';\n    payload = { chosenHook, format: session.format, session };\n  } else if (data === 'action:publish') {\n    eventType = 'publish_linkedin';\n    payload = { post_content: session.draft || '', session };\n  } else if (data === 'action:regenerate') {\n    let hook = session.chosenHook;\n    if (!hook && session.draft) {\n      hook = session.draft.split('\\n')[0].trim();\n      session.chosenHook = hook;\n    }\n    eventType = 'gen_body';\n    payload = { chosenHook: hook, format: session.format, topic: session.topic, session, isRegenerate: true };\n  }\n} else if (raw.message && raw.message.text) {\n  chatId = String(raw.message.chat.id);\n  const text = raw.message.text.trim();\n\n  if (chatId === String(cfg.authorized_chat_id)) {\n    const lower = text.toLowerCase();\n    const greetings = new Set(['hey', 'hi', 'hello', 'yo', 'sup', '/start', '/help', 'help', 'menu']);\n\n    if (lower === '/cancel' || lower === 'cancel') {\n      saveSession(chatId, {});\n      eventType = 'cancelled';\n    } else if (lower === '/resume' || lower === 'resume') {\n      const session = getSession(chatId);\n      if (session.topic) {\n        const res = buildResumePayload(session);\n        eventType = res.eventType;\n        payload = res.payload;\n      } else {\n        eventType = 'greeting';\n        payload = makeGreeting(null);\n      }\n    } else if (greetings.has(lower) || (lower.length < 6 && !text.includes('http'))) {\n      const session = getSession(chatId);\n      eventType = 'greeting';\n      payload = makeGreeting(session);\n    } else {\n      const history = getHistory(chatId);\n      const currentWords = cleanWords(text);\n      let duplicateMatch = null;\n\n      for (const item of history) {\n        const pastWords = cleanWords(item.topic);\n        const overlap = calculateOverlap(currentWords, pastWords);\n        if (overlap >= 0.60 && item.draft) {\n          duplicateMatch = item;\n          break;\n        }\n      }\n\n      const urlRegex = /https?:\\/\\/[^\\s]+/gi;\n      const matches = text.match(urlRegex) || [];\n      const session = {\n        topic: text,\n        urls: matches,\n        format: 'post',\n        updatedAt: new Date().toISOString()\n      };\n\n      if (duplicateMatch) {\n        session.cachedDraft = duplicateMatch.draft;\n        session.cachedTopic = duplicateMatch.topic;\n        session.chosenHook = duplicateMatch.hook || (duplicateMatch.draft ? duplicateMatch.draft.split('\\n')[0].trim() : '');\n        saveSession(chatId, session);\n        eventType = 'dup_found';\n        payload = { currentTopic: text, matchedTopic: duplicateMatch.topic, draft: duplicateMatch.draft };\n      } else {\n        session.step = 'prompt_format';\n        saveSession(chatId, session);\n        eventType = 'prompt_format';\n        payload = { topic: text, urls: matches };\n      }\n    }\n  }\n}\n\nconst isAuthorized = (chatId === String(cfg.authorized_chat_id));\nif (!isAuthorized) eventType = 'unauthorized';\n\nreturn [{\n  json: {\n    chat_id: chatId,\n    event_type: eventType,\n    telegram_bot_token: cfg.telegram_bot_token,\n    openrouter_api_key: cfg.openrouter_api_key,\n    openrouter_model: cfg.openrouter_model,\n    linkedin_author_urn: cfg.linkedin_author_urn,\n    ...payload\n  }\n}];"
+      },
+      "id": "30000000-0000-0000-0000-000000000003",
+      "name": "Dispatcher_And_Dedup",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c-cancel",
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "cancelled",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Cancelled"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c-dup",
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "dup_found",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Dup_Found"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c-fmt",
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "prompt_format",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Prompt_Format"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c-persona",
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "prompt_persona",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Prompt_Persona"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c-tone",
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "prompt_tone",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Prompt_Tone"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c-hooks",
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "gen_hooks",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Gen_Hooks"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c-body",
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "gen_body",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Gen_Body"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c-pub",
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "publish_linkedin",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Publish_LinkedIn"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c-greet",
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "greeting",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Greeting"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c-show-draft",
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "show_draft",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  },
+                  {
+                    "id": "c-show-cached",
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "show_cached",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "or"
+              },
+              "renameOutput": true,
+              "outputKey": "Show_Draft"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "40000000-0000-0000-0000-000000000004",
+      "name": "Switch_Event",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        750,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.telegram.org/bot' + $json.telegram_bot_token + '/sendMessage' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  chat_id: $json.chat_id,\n  text: '\ud83e\uddf9 *Session Cleared!*\\n\\nPrevious draft and options have been reset.\\nSend a new topic or idea anytime to start over.',\n  parse_mode: 'Markdown'\n}) }}",
+        "options": {}
+      },
+      "id": "50000000-0000-0000-0000-000000000005",
+      "name": "Send_Cancel_Notice",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1050,
+        150
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.telegram.org/bot' + $json.telegram_bot_token + '/sendMessage' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  chat_id: $json.chat_id,\n  text: '\ud83d\udd0d *Existing Draft Found!*\\n\\nWe previously created a draft on this topic:\\n\\\"' + $json.matchedTopic + '\\\"\\n\\nWhat would you like to do?',\n  parse_mode: 'Markdown',\n  reply_markup: {\n    inline_keyboard: [\n      [\n        { text: '\ud83d\udcc4 View Cached Draft', callback_data: 'action:use_cached' },\n        { text: '\u2728 Write Fresh', callback_data: 'action:start_fresh' }\n      ],\n      [\n        { text: '\u274c Cancel', callback_data: 'action:cancel' }\n      ]\n    ]\n  }\n}) }}",
+        "options": {}
+      },
+      "id": "60000000-0000-0000-0000-000000000006",
+      "name": "Send_Dedup_Card",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1050,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.telegram.org/bot' + $json.telegram_bot_token + '/sendMessage' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  chat_id: $json.chat_id,\n  text: '\ud83d\udca1 *Topic:* ' + ($json.topic ? $json.topic.substring(0, 80) : '') + '...\\n\\n\ud83d\udc49 *Step 1: Choose Persona*', \n  parse_mode: 'Markdown',\n  reply_markup: {\n    inline_keyboard: [\n      [\n        { text: '\ud83d\udcbc Leader', callback_data: 'p:leader' },\n        { text: '\ud83d\udee0\ufe0f Senior Engineer', callback_data: 'p:engineer' }\n      ],\n      [\n        { text: '\ud83d\ude80 Passionate Mentor', callback_data: 'p:mentor' },\n        { text: '\u274c Cancel', callback_data: 'action:cancel' }\n      ]\n    ]\n  }\n}) }}",
+        "options": {}
+      },
+      "id": "70000000-0000-0000-0000-000000000007",
+      "name": "Send_Persona_Selection",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1050,
+        450
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.telegram.org/bot' + $json.telegram_bot_token + '/sendMessage' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  chat_id: $json.chat_id,\n  text: '\ud83d\udc64 *Persona Selected:* ' + ($json.persona === 'leader' ? 'The Leader' : $json.persona === 'engineer' ? 'The Senior Engineer' : 'The Passionate Mentor') + '\\n\\n\ud83d\udc49 *Step 2: Choose Tone*', \n  parse_mode: 'Markdown',\n  reply_markup: {\n    inline_keyboard: [\n      [\n        { text: '\u2696\ufe0f Compare & Contrast', callback_data: 't:compare' },\n        { text: '\ud83d\udd25 Show Off', callback_data: 't:showoff' }\n      ],\n      [\n        { text: '\ud83c\udf89 Excited', callback_data: 't:excited' },\n        { text: '\ud83d\udcda Informative', callback_data: 't:informative' }\n      ],\n      [\n        { text: '\ud83d\udc54 Formal', callback_data: 't:formal' },\n        { text: '\ud83e\udd1d Friendly', callback_data: 't:friendly' }\n      ],\n      [\n        { text: '\ud83d\ude0f Condescending', callback_data: 't:condescending' },\n        { text: '\ud83d\udd4a\ufe0f Passive', callback_data: 't:passive' }\n      ],\n      [\n        { text: '\u274c Cancel', callback_data: 'action:cancel' }\n      ]\n    ]\n  }\n}) }}",
+        "options": {}
+      },
+      "id": "80000000-0000-0000-0000-000000000008",
+      "name": "Send_Tone_Selection",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1050,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "let staticData = {};\ntry { staticData = $getWorkflowStaticData('global'); } catch(e) {}\nstaticData.sessions = staticData.sessions || {};\n\nconst item = $json;\nconst chatId = item.chat_id;\nconst session = item.session || staticData.sessions[chatId] || {};\nconst isRegen = item.isRegenHooks || false;\n\nconst systemPrompt = `You are an elite viral LinkedIn hook architect writing for Sam V.\nYour objective is to generate EXACTLY 3 distinct, scroll-stopping hooks designed to maximize feed dwell time and click-through on the \"see more\" cutoff.\n\nSTRICT LENGTH CONSTRAINT:\nEach hook MUST be a MAXIMUM of 1 to 2 sentences (under 30 words total). Never write multi-sentence paragraphs or run-on sentences. Keep it short, sharp, provocative, and punchy.\n\nHOOK ANGLES:\n- Hook 1 (Contrarian / Myth-Busting): Overturn a commonly accepted belief or practice with bold conviction in 1-2 sentences.\n- Hook 2 (Hard Truth / Pain Point): Call out an expensive mistake or harsh operational reality in 1-2 sentences.\n- Hook 3 (Benchmark / Story): High-status metric, measurable breakthrough, or battle scar in 1-2 sentences.\n\nOUTPUT FORMAT:\nOutput ONLY valid JSON matching this exact schema:\n{\n  \"hook1\": \"1-2 sentences (max 30 words)\",\n  \"hook2\": \"1-2 sentences (max 30 words)\",\n  \"hook3\": \"1-2 sentences (max 30 words)\"\n}\nOutput ONLY valid JSON. No conversational text or markdown fences outside the JSON.`;\n\nconst userPrompt = `TOPIC & CONTEXT:\n${session.topic || ''}\n\nACTIVE PERSONA: ${session.persona || 'engineer'}\nACTIVE TONE: ${session.tone || 'informative'}\n${isRegen ? '\\nREGENERATION NOTE: Provide 3 completely fresh, alternative angles distinct from previous hooks.\\n' : ''}\nGenerate the 3 short viral hooks now.`;\n\nreturn [{\n  json: {\n    ...item,\n    ai_payload: {\n      model: item.openrouter_model || 'openrouter/auto',\n      messages: [\n        { role: 'system', content: systemPrompt },\n        { role: 'user', content: userPrompt }\n      ],\n      temperature: isRegen ? 0.95 : 0.8,\n      max_tokens: 1500\n    }\n  }\n}];"
+      },
+      "id": "90000000-0000-0000-0000-000000000009",
+      "name": "Prepare_Hooks_Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1050,
+        750
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $json.openrouter_api_key }}"
+            },
+            {
+              "name": "HTTP-Referer",
+              "value": "https://fastkode.com"
+            },
+            {
+              "name": "X-Title",
+              "value": "FastKode LinkedIn Hook Generator"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.ai_payload) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "a0000000-0000-0000-0000-000000000010",
+      "name": "Call_OpenRouter_Hooks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1270,
+        750
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "let staticData = {};\ntry { staticData = $getWorkflowStaticData('global'); } catch(e) {}\nstaticData.sessions = staticData.sessions || {};\n\nconst response = $json;\nconst prior = $('Prepare_Hooks_Prompt').first().json;\nconst chatId = prior.chat_id;\nconst session = staticData.sessions[chatId] || {};\n\nif (response.error || (response.statusCode && response.statusCode >= 400)) {\n  const errMsg = response.error ? (response.error.message || JSON.stringify(response.error)) : `AI Service returned status ${response.statusCode}`;\n  return [{\n    json: {\n      chat_id: chatId,\n      telegram_bot_token: prior.telegram_bot_token,\n      is_error: true,\n      card_text: `\u26a0\ufe0f *OpenRouter Error Generating Hooks:*\\n\\n${errMsg}\\n\\n\ud83d\udc47 *Tap below to retry or cancel:*`,\n      reply_markup: {\n        inline_keyboard: [\n          [\n            { text: '\ud83d\udd04 Retry Hooks', callback_data: 'h:regen' },\n            { text: '\u274c Cancel', callback_data: 'action:cancel' }\n          ]\n        ]\n      }\n    }\n  }];\n}\n\nlet rawContent = '';\nif (response.choices && response.choices.length > 0 && response.choices[0].message) {\n  rawContent = response.choices[0].message.content || '';\n}\n\nlet text = rawContent.replace(/<think>[\\s\\S]*?<\\/think>/gi, '').trim();\ntext = text.replace(/^```(?:json)?\\s*/i, '').replace(/\\s*```$/i, '').trim();\n\nlet parsed = {};\ntry {\n  parsed = JSON.parse(text);\n} catch (e) {\n  const extractHook = (key) => {\n    const match = text.match(new RegExp(`\"${key}\"\\\\s*:\\\\s*\"([^\"\\\\\\\\]*(?:\\\\.[^\"\\\\\\\\]*)*)\"`, 'i'));\n    return match ? match[1].replace(/\\\\\"/g, '\"').replace(/\\\\n/g, '\\n') : '';\n  };\n  parsed = {\n    hook1: extractHook('hook1'),\n    hook2: extractHook('hook2'),\n    hook3: extractHook('hook3')\n  };\n}\n\nconst topicSnippet = (session.topic || 'this space').substring(0, 60);\nconst hook1 = parsed.hook1 || `Most founders and engineers are looking at ${topicSnippet} completely wrong.`;\nconst hook2 = parsed.hook2 || `The unvarnished reality about ${topicSnippet} that nobody discusses publicly.`;\nconst hook3 = parsed.hook3 || `How the latest moves in ${topicSnippet} shift the entire industry benchmark.`;\n\nconst hooks = [hook1, hook2, hook3];\n\nif (!staticData.sessions[chatId]) staticData.sessions[chatId] = {};\nstaticData.sessions[chatId].hooks = hooks;\n\nreturn [{\n  json: {\n    chat_id: chatId,\n    telegram_bot_token: prior.telegram_bot_token,\n    hook1: hooks[0],\n    hook2: hooks[1],\n    hook3: hooks[2]\n  }\n}];"
+      },
+      "id": "b0000000-0000-0000-0000-000000000011",
+      "name": "Parse_Hooks_Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1490,
+        750
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.telegram.org/bot' + $json.telegram_bot_token + '/sendMessage' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  chat_id: $json.chat_id,\n  text: $json.card_text || ('\ud83e\ude9d *3 Viral Hooks Generated:*\\n\\n1\ufe0f\u20e3 *Contrarian:*\\n\\\"' + $json.hook1 + '\\\"\\n\\n2\ufe0f\u20e3 *Hard Truth / Pain Point:*\\n\\\"' + $json.hook2 + '\\\"\\n\\n3\ufe0f\u20e3 *Benchmark / Story:*\\n\\\"' + $json.hook3 + '\\\"\\n\\n\ud83d\udc47 *Tap your favorite hook to write the post, or regenerate:*'),\n  parse_mode: 'Markdown',\n  reply_markup: $json.reply_markup || {\n    inline_keyboard: [\n      [\n        { text: '\ud83e\ude9d 1. Contrarian', callback_data: 'h:0' },\n        { text: '\ud83e\ude9d 2. Pain Point', callback_data: 'h:1' }\n      ],\n      [\n        { text: '\ud83e\ude9d 3. Benchmark', callback_data: 'h:2' }\n      ],\n      [\n        { text: '\ud83d\udd04 Regenerate Hooks', callback_data: 'h:regen' },\n        { text: '\u274c Cancel', callback_data: 'action:cancel' }\n      ]\n    ]\n  }\n}) }}",
+        "options": {}
+      },
+      "id": "c0000000-0000-0000-0000-000000000012",
+      "name": "Send_Hooks_Card",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1710,
+        750
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "let staticData = {};\ntry { staticData = $getWorkflowStaticData('global'); } catch(e) {}\nstaticData.sessions = staticData.sessions || {};\n\nconst item = $json;\nconst chatId = item.chat_id;\nconst session = item.session || staticData.sessions[chatId] || {};\nconst chosenHook = item.chosenHook || session.chosenHook || '';\nconst isArticle = (session.format === 'article');\n\nconst personaMap = {\n  leader: 'THE LEADER: Direct, assertive, motivational. Uses short, declarative sentences to convey authority and urgency. Action-oriented, focused on results and momentum.',\n  engineer: 'THE SENIOR ENGINEER: Purely functional and instructional. Assumes high level of expertise. Economical, stripped to essentials. Omit fluff, extensive use of lists and scannable technical insights.',\n  mentor: 'THE PASSIONATE MENTOR: Conversational, informal, enthusiastic. Direct address (\"you\") and rhetorical questions. Builds rapport through anecdotes and excitement.'\n};\n\nconst toneMap = {\n  compare: 'Compare & Contrast: Analytical breakdown comparing tradeoffs, architectures, or philosophies side-by-side.',\n  showoff: 'Show Off: Confident and proud, spotlighting elite benchmarks, high-scale metrics, and proven achievements.',\n  excited: 'Excited: High energy, visionary optimism, celebrating breakthroughs with genuine passion.',\n  informative: 'Informative: Educational masterclass with clear explanations and dense insight-to-word ratio.',\n  formal: 'Formal: Polished, executive, measured professional business diction.',\n  friendly: 'Friendly: Warm, conversational, welcoming, and peer-to-peer.',\n  condescending: 'Condescending: Provocative and witty, calling out amateur anti-patterns with unshakeable technical superiority.',\n  passive: 'Passive: Understated, calm, neutral, and matter-of-fact.'\n};\n\nconst activePersona = personaMap[session.persona] || personaMap.engineer;\nconst activeTone = toneMap[session.tone] || toneMap.informative;\n\nlet systemPrompt = '';\n\nif (isArticle) {\n  systemPrompt = `You are a sophisticated ghostwriter emulating the writing style of Sam V for a long-form LinkedIn Article.\nWrite an authoritative, structured article designed for the LinkedIn Pulse / Articles web editor.\n\nARTICLE STRUCTURE:\n- Catchy Article Headline on Line 1.\n- Opening introduction section starting directly with the chosen hook.\n- Structured H2 sections (## Section Title) with in-depth analysis and tradeoffs.\n- Scannable bullet takeaways and comparison tables where valuable.\n- Strategic conclusion and call to discussion.\n- Length: 600 to 900 words.\n- End with 3-5 relevant hashtags.\nOutput ONLY the article. No conversational preamble.`;\n} else {\n  systemPrompt = `You are a sophisticated ghostwriter emulating the writing style of Sam V for a standard LinkedIn FEED POST.\nYour output will be published directly to the LinkedIn Feed API, which strictly renders PLAIN TEXT.\n\nSTRICT FEED POST RULES:\n1. NO TITLE / NO HEADLINE: Do NOT include any title, headline, or bolded subject line. Start IMMEDIATELY with the chosen hook as the very first sentence.\n2. STRICT LENGTH: Exactly 3 to 4 short, punchy paragraphs (total 150 to 220 words).\n3. ZERO MARKDOWN SYNTAX: Strictly FORBIDDEN to use ** (asterisks), ## (hashes), --- (horizontal rules), or triple-backtick (backtick code fences). LinkedIn feed does NOT render markdown\u2014it prints raw symbols.\n4. FEED-NATIVE FORMATTING: Use clean double line breaks between paragraphs, native emojis (\ud83d\ude80, \ud83d\udca1, \ud83d\udccc, \ud83d\udc49, \u26a1), and native bullet dots (\u2022) for scannable lists.\n5. PARAGRAPH BLUEPRINT:\n   \u2022 Paragraph 1: The chosen hook followed immediately by the core tension or reality.\n   \u2022 Paragraph 2: The breakdown (contrasting reality, key metrics, or 2-3 bullet points using \u2022).\n   \u2022 Paragraph 3 & 4: Strategic takeaway for founders/engineers and a sharp punchline closing.\n6. CONDITIONAL CODE: ZERO code blocks unless the topic is explicitly about software programming.\n7. HASHTAGS: End with 3-5 relevant hashtags on the final line.\nOutput ONLY the clean plain-text LinkedIn post.`;\n}\n\nlet userPrompt = `TOPIC & CONTEXT:\n${session.topic || ''}\n\nACTIVE PERSONA:\n${activePersona}\n\nACTIVE TONE:\n${activeTone}\n\nMANDATORY HOOK (Must be the very first sentence):\n\"${chosenHook}\"\n`;\n\nif (session.urls && session.urls.length > 0) {\n  userPrompt += `\\nRESEARCH REFERENCE LINKS:\\n${session.urls.join('\\n')}\\nIncorporate insights from these references.\\n`;\n}\n\nuserPrompt += isArticle\n  ? `\\nWrite the complete long-form LinkedIn article now.`\n  : `\\nWrite the clean 3-4 paragraph plain-text feed post now (NO title, NO ** markdown, starting directly with the hook).`;\n\nreturn [{\n  json: {\n    ...item,\n    ai_payload: {\n      model: item.openrouter_model || 'openrouter/auto',\n      messages: [\n        { role: 'system', content: systemPrompt },\n        { role: 'user', content: userPrompt }\n      ],\n      temperature: item.isRegenerate ? 0.85 : 0.7,\n      max_tokens: isArticle ? 3500 : 1500\n    }\n  }\n}];"
+      },
+      "id": "d0000000-0000-0000-0000-000000000013",
+      "name": "Prepare_Body_Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1050,
+        900
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $json.openrouter_api_key }}"
+            },
+            {
+              "name": "HTTP-Referer",
+              "value": "https://fastkode.com"
+            },
+            {
+              "name": "X-Title",
+              "value": "FastKode LinkedIn Writer"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.ai_payload) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "e0000000-0000-0000-0000-000000000014",
+      "name": "Call_OpenRouter_Body",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1270,
+        900
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "let staticData = {};\ntry { staticData = $getWorkflowStaticData('global'); } catch(e) {}\nstaticData.sessions = staticData.sessions || {};\nstaticData.history = staticData.history || [];\n\nconst response = $json;\nconst prior = $('Prepare_Body_Prompt').first().json;\nconst chatId = prior.chat_id;\n\nif (response.error || (response.statusCode && response.statusCode >= 400)) {\n  const errMsg = response.error ? (response.error.message || JSON.stringify(response.error)) : `AI Service returned status ${response.statusCode}`;\n  return [{\n    json: {\n      chat_id: chatId,\n      telegram_bot_token: prior.telegram_bot_token,\n      draft_card_text: `\u26a0\ufe0f *OpenRouter Error Generating Draft:*\\n\\n${errMsg}\\n\\n\ud83d\udc47 *Tap below to retry or cancel:*`,\n      reply_markup: {\n        inline_keyboard: [\n          [\n            { text: '\ud83d\udd04 Retry Generation', callback_data: 'action:regenerate' },\n            { text: '\u274c Cancel', callback_data: 'action:cancel' }\n          ]\n        ]\n      }\n    }\n  }];\n}\n\nlet generated = '';\nif (response.choices && response.choices.length > 0 && response.choices[0].message) {\n  generated = response.choices[0].message.content || '';\n}\n\n// Strip reasoning or think tags\ngenerated = generated.replace(/<think>[\\s\\S]*?<\\/think>/gi, '').trim();\n\nif (!staticData.sessions[chatId]) staticData.sessions[chatId] = {};\nconst session = staticData.sessions[chatId];\nconst isArticle = (session.format === 'article');\n\nlet cleanPost = generated;\nif (!isArticle) {\n  // Feed Post: Sanitize any stray markdown so LinkedIn feed renders cleanly\n  cleanPost = cleanPost\n    .replace(/^#+\\s+.*$/gm, '')          // Remove # Headers\n    .replace(/\\*\\*(.*?)\\*\\*/g, '$1')        // Strip **bold** asterisks\n    .replace(/\\*(.*?)\\*/g, '$1')            // Strip *italic* asterisks\n    .replace(/^---+$/gm, '')                // Strip --- dividers\n    .replace(/```[a-z]*\\n?/gi, '')          // Strip code fences\n    .replace(/\\n{3,}/g, '\\n\\n')             // Normalize multiple linebreaks\n    .trim();\n}\n\nsession.draft = cleanPost;\nsession.step = 'draft_ready';\n\nconst currentHook = session.chosenHook || (cleanPost ? cleanPost.split('\\n')[0].trim() : '');\nsession.chosenHook = currentHook;\n\nstaticData.history.unshift({\n  chatId: chatId,\n  topic: session.topic || '',\n  draft: cleanPost,\n  hook: currentHook,\n  format: session.format || 'post',\n  persona: session.persona || '',\n  tone: session.tone || '',\n  createdAt: new Date().toISOString()\n});\nstaticData.history = staticData.history.slice(0, 30);\n\nlet cardText = '';\nlet replyMarkup = {};\n\nif (isArticle) {\n  cardText = `\ud83d\udcf0 *LinkedIn Long Article Draft Ready:*\\n\\n${cleanPost}\\n\\n\ud83d\udccc *Note:* LinkedIn API does not support publishing Articles directly. Copy this text and paste it into linkedin.com/pulse.`;\n  replyMarkup = {\n    inline_keyboard: [\n      [\n        { text: '\ud83d\udd04 Regenerate Article', callback_data: 'action:regenerate' },\n        { text: '\u274c Cancel', callback_data: 'action:cancel' }\n      ]\n    ]\n  };\n} else {\n  cardText = `\u270d\ufe0f *LinkedIn Feed Post Ready:*\\n\\n${cleanPost}\\n\\n\ud83d\udc47 *Tap below to publish live or regenerate:*`;\n  replyMarkup = {\n    inline_keyboard: [\n      [\n        { text: '\ud83d\ude80 Publish to LinkedIn', callback_data: 'action:publish' },\n        { text: '\ud83d\udd04 Regenerate Post', callback_data: 'action:regenerate' }\n      ],\n      [\n        { text: '\u274c Cancel', callback_data: 'action:cancel' }\n      ]\n    ]\n  };\n}\n\nreturn [{\n  json: {\n    chat_id: chatId,\n    post_content: cleanPost,\n    draft_card_text: cardText,\n    reply_markup: replyMarkup,\n    telegram_bot_token: prior.telegram_bot_token,\n    linkedin_author_urn: prior.linkedin_author_urn\n  }\n}];"
+      },
+      "id": "f0000000-0000-0000-0000-000000000015",
+      "name": "Format_Draft_Card",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1490,
+        900
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.telegram.org/bot' + $json.telegram_bot_token + '/sendMessage' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chat_id, text: $json.draft_card_text, reply_markup: $json.reply_markup }) }}",
+        "options": {}
+      },
+      "id": "11000000-0000-0000-0000-000000000016",
+      "name": "Send_Draft_Card",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1710,
+        900
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "let staticData = {};\ntry { staticData = $getWorkflowStaticData('global'); } catch(e) {}\nstaticData.sessions = staticData.sessions || {};\nstaticData.ledger = staticData.ledger || [];\n\nconst item = $json;\nconst chatId = item.chat_id;\nconst content = item.post_content || '';\nconst wordCount = content.split(/\\s+/).filter(Boolean).length;\nconst session = item.session || staticData.sessions[chatId] || {};\n\nconst ledgerEntry = {\n  timestamp: new Date().toISOString(),\n  author_urn: item.linkedin_author_urn || 'urn:li:person:dH38GqfHh5',\n  persona: session.persona || '',\n  tone: session.tone || '',\n  hook: session.chosenHook || '',\n  word_count: wordCount,\n  topic: session.topic || '',\n  status: 'PUBLISHED'\n};\n\nstaticData.ledger.unshift(ledgerEntry);\nstaticData.ledger = staticData.ledger.slice(0, 100);\n\nreturn [{\n  json: {\n    ...item,\n    post_content: content,\n    word_count: wordCount\n  }\n}];"
+      },
+      "id": "12000000-0000-0000-0000-000000000017",
+      "name": "Append_Ledger_Record",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1050,
+        1050
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.linkedin.com/rest/posts",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "linkedInOAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "LinkedIn-Version",
+              "value": "202608"
+            },
+            {
+              "name": "X-Restli-Protocol-Version",
+              "value": "2.0.0"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  author: $json.linkedin_author_urn,\n  commentary: $json.post_content,\n  visibility: 'PUBLIC',\n  distribution: {\n    feedDistribution: 'MAIN_FEED',\n    targetEntities: [],\n    thirdPartyDistributionChannels: []\n  },\n  lifecycleState: 'PUBLISHED',\n  isReshareDisabledByAuthor: false\n}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "13000000-0000-0000-0000-000000000018",
+      "name": "Publish_To_LinkedIn",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1270,
+        1050
+      ],
+      "credentials": {
+        "linkedInOAuth2Api": {
+          "id": "qBQv4kEV9H7PW3aT",
+          "name": "LinkedIn account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.telegram.org/bot' + $('User_Config').first().json.telegram_bot_token + '/sendMessage' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify(($json.error || $json.message || ($json.status && $json.status >= 400)) ? { chat_id: $('Append_Ledger_Record').first().json.chat_id, text: '\u274c *LinkedIn Publishing Failed:*\\n\\n' + ($json.message || JSON.stringify($json.error || $json)) + '\\n\\n\ud83d\udc47 *Tap below to retry:*', parse_mode: 'Markdown', reply_markup: { inline_keyboard: [ [ { text: '\ud83d\ude80 Retry Publish', callback_data: 'action:publish' }, { text: '\u274c Cancel', callback_data: 'action:cancel' } ] ] } } : { chat_id: $('Append_Ledger_Record').first().json.chat_id, text: '\ud83c\udf89 *Published Live to LinkedIn!*\\n\\nYour post is live on your profile.\\nLedger entry saved (' + $('Append_Ledger_Record').first().json.word_count + ' words).\\n\\nKeep building!', parse_mode: 'Markdown' }) }}",
+        "options": {}
+      },
+      "id": "14000000-0000-0000-0000-000000000019",
+      "name": "Send_Publish_Confirmation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1490,
+        1050
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.telegram.org/bot' + $json.telegram_bot_token + '/sendMessage' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chat_id, text: $json.greeting_text, parse_mode: \"Markdown\", reply_markup: $json.reply_markup }) }}",
+        "options": {}
+      },
+      "id": "15000000-0000-0000-0000-000000000020",
+      "name": "Send_Greeting_Card",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1050,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.telegram.org/bot' + $json.telegram_bot_token + '/sendMessage' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chat_id, text: '\ud83d\udca1 *Topic:* \\\"' + ($json.topic ? $json.topic.substring(0, 80) : '') + '...\\\"\\n\\n\ud83d\udc49 *Step 1: Choose Content Format*', parse_mode: 'Markdown', reply_markup: { inline_keyboard: [ [ { text: '\ud83d\udcf1 Feed Post (3-4 paras, 1-click publish)', callback_data: 'fmt:post' } ], [ { text: '\ud83d\udcf0 Long Article (Deep dive, for Web Editor)', callback_data: 'fmt:article' } ], [ { text: '\u274c Cancel', callback_data: 'action:cancel' } ] ] } }) }}",
+        "options": {}
+      },
+      "id": "21000000-0000-0000-0000-000000000021",
+      "name": "Send_Format_Selection",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1050,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.telegram.org/bot' + $json.telegram_bot_token + '/sendMessage' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chat_id, text: '\ud83e\udde0 *Analyzing context & architecting 3 viral hooks...*', parse_mode: 'Markdown' }) }}",
+        "options": {}
+      },
+      "id": "22000000-0000-0000-0000-000000000022",
+      "name": "Send_Hooks_Loading",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1050,
+        690
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.telegram.org/bot' + $json.telegram_bot_token + '/sendMessage' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chat_id, text: '\u23f3 *Writing your ' + ($json.format === 'article' ? 'Long Article' : 'Feed Post') + '...*' + ($json.chosenHook && $json.chosenHook.trim() ? '\\n\\n\ud83d\udccc *Hook:* \\\"' + $json.chosenHook.trim().substring(0, 80) + ($json.chosenHook.trim().length > 80 ? '...' : '') + '\\\"' : ($json.topic ? '\\n\\n\ud83d\udccc *Topic:* \\\"' + $json.topic.trim().substring(0, 80) + '...\\\"' : '')), parse_mode: 'Markdown' }) }}",
+        "options": {}
+      },
+      "id": "23000000-0000-0000-0000-000000000023",
+      "name": "Send_Body_Loading",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1050,
+        840
+      ]
+    }
+  ],
+  "connections": {
+    "Telegram_Trigger": {
+      "main": [
+        [
+          {
+            "node": "User_Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "User_Config": {
+      "main": [
+        [
+          {
+            "node": "Dispatcher_And_Dedup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dispatcher_And_Dedup": {
+      "main": [
+        [
+          {
+            "node": "Switch_Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch_Event": {
+      "main": [
+        [
+          {
+            "node": "Send_Cancel_Notice",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send_Dedup_Card",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send_Format_Selection",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send_Persona_Selection",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send_Tone_Selection",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send_Hooks_Loading",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare_Hooks_Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send_Body_Loading",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare_Body_Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Append_Ledger_Record",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send_Greeting_Card",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send_Draft_Card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare_Hooks_Prompt": {
+      "main": [
+        [
+          {
+            "node": "Call_OpenRouter_Hooks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call_OpenRouter_Hooks": {
+      "main": [
+        [
+          {
+            "node": "Parse_Hooks_Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse_Hooks_Output": {
+      "main": [
+        [
+          {
+            "node": "Send_Hooks_Card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare_Body_Prompt": {
+      "main": [
+        [
+          {
+            "node": "Call_OpenRouter_Body",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call_OpenRouter_Body": {
+      "main": [
+        [
+          {
+            "node": "Format_Draft_Card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format_Draft_Card": {
+      "main": [
+        [
+          {
+            "node": "Send_Draft_Card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append_Ledger_Record": {
+      "main": [
+        [
+          {
+            "node": "Publish_To_LinkedIn",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publish_To_LinkedIn": {
+      "main": [
+        [
+          {
+            "node": "Send_Publish_Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  }
+}

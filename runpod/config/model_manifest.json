@@ -1,0 +1,76 @@
+{
+  "_comment": "Model manifest for Fluid Motion serverless workers. All paths are relative to /runpod-volume/models/.",
+  "image": {
+    "checkpoint": {
+      "name": "animagine-xl-4.0.safetensors",
+      "family": "SDXL",
+      "description": "Animagine XL 4.0 — high-quality anime SDXL checkpoint. Strong prompt adherence, consistent anatomy, vibrant colors.",
+      "path": "checkpoints/animagine-xl-4.0.safetensors",
+      "source": "https://huggingface.co/cagliostrolab/animagine-xl-4.0",
+      "size_gb": 6.5,
+      "notes": "House model. Do NOT add additional base checkpoints — use LoRAs for style variants."
+    },
+    "vae": {
+      "name": "sdxl_vae.safetensors",
+      "path": "vae/sdxl_vae.safetensors",
+      "description": "Fixed SDXL VAE for consistent color/contrast output.",
+      "source": "https://huggingface.co/stabilityai/sdxl-vae",
+      "size_gb": 0.3
+    },
+    "loras": {
+      "watercolor": {
+        "name": "watercolor_style_sdxl.safetensors",
+        "path": "loras/watercolor_style_sdxl.safetensors",
+        "description": "Ghibli-adjacent soft watercolor + warm lighting style LoRA.",
+        "default_weight": 0.7,
+        "trigger_words": ["watercolor style", "ghibli style", "soft painting"],
+        "size_mb": 150,
+        "notes": "Applied when style='watercolor' (default). Light enough to not distort base anatomy."
+      },
+      "cyberpunk": {
+        "name": "cyberpunk_style_sdxl.safetensors",
+        "path": "loras/cyberpunk_style_sdxl.safetensors",
+        "description": "Neon/gritty cyberpunk aesthetic LoRA.",
+        "default_weight": 0.7,
+        "trigger_words": ["cyberpunk", "neon lights", "dark sci-fi"],
+        "size_mb": 150,
+        "notes": "Applied when style='cyberpunk'. Can combine with darker negative prompts for noir variant."
+      }
+    },
+    "upscaler": {
+      "name": "4x-UltraSharp.pth",
+      "path": "upscale_models/4x-UltraSharp.pth",
+      "description": "4x upscaler for final mode. Sharp, preserves anime linework.",
+      "size_mb": 65
+    }
+  },
+  "video": {
+    "standard": {
+      "name": "ltx-video",
+      "family": "LTX",
+      "description": "LTX Video — budget image-to-video model. Good motion quality, reasonable VRAM.",
+      "path": "video/ltx-video/",
+      "source": "https://huggingface.co/Lightricks/LTX-Video",
+      "size_gb": 9,
+      "notes": "Default tier. Use for all standard video generation requests."
+    },
+    "premium": {
+      "name": "minimax-h3-max",
+      "family": "Minimax",
+      "description": "Minimax H3 Max — premium cinematic video generation.",
+      "path": "video/minimax-h3-max/",
+      "notes": "Premium tier. Only triggered by explicit user request or Diva hero shots."
+    }
+  },
+  "volume_layout": {
+    "_comment": "Expected directory structure on /runpod-volume/models/",
+    "directories": [
+      "checkpoints/",
+      "vae/",
+      "loras/",
+      "upscale_models/",
+      "video/ltx-video/",
+      "video/minimax-h3-max/"
+    ]
+  }
+}

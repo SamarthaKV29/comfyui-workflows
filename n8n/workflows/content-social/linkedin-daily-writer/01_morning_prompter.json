@@ -1,0 +1,113 @@
+{
+  "name": "LinkedIn Daily Writer - 01 Morning Prompter",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "1d8b9f01-e234-4b56-9a78-c01234567890",
+      "name": "Schedule_9AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg-chat-id",
+              "name": "chat_id",
+              "value": "6386729762",
+              "type": "string"
+            },
+            {
+              "id": "cfg-prompt-msg",
+              "name": "prompt_message",
+              "value": "☀️ *Good morning!*\n\nWhat would you like to write about on LinkedIn today?\n\n👉 *Reply to this message* with:\n• A brief idea or theme\n• Key talking points or takeaways\n• Any URLs/articles you'd like me to research and reference\n\nI will review the context, craft a post matching your persona, and prepare it for publishing.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2e9c0a12-f345-4c67-ab89-d12345678901",
+      "name": "User_Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        470,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.prompt_message }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "3fa01b23-0456-4d78-bc90-e23456789012",
+      "name": "Send_Telegram_Prompt",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        690,
+        300
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "YOUR_TELEGRAM_CREDENTIAL_ID",
+          "name": "Telegram Bot Account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule_9AM": {
+      "main": [
+        [
+          {
+            "node": "User_Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "User_Config": {
+      "main": [
+        [
+          {
+            "node": "Send_Telegram_Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "LinkedIn"
+    },
+    {
+      "name": "Content"
+    }
+  ]
+}
